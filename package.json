@@ -1,0 +1,26 @@
+{
+  "name": "myclub",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "preinstall": "node -e \"if(process.platform==='darwin'){const fs=require('fs'),cp=require('child_process');for(const d of['node_modules','apps/web/.next','apps/mobile/.expo']){fs.mkdirSync(d,{recursive:true});try{cp.execFileSync('xattr',['-w','com.apple.fileprovider.ignore#P','1',d])}catch{}}}\"",
+    "postinstall": "npm run preinstall",
+    "dev:api": "npm run dev -w @myclub/api",
+    "dev:web": "npm run dev -w @myclub/web",
+    "dev:mobile": "npm run start -w @myclub/mobile",
+    "db:migrate": "npm run db:migrate -w @myclub/api",
+    "typecheck": "npm run typecheck -w @myclub/shared && npm run typecheck -w @myclub/api && npm run typecheck -w @myclub/web && npm run typecheck -w @myclub/mobile",
+    "test:e2e": "npm run test:e2e -w @myclub/web"
+  },
+  "overrides": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "dependencies": {
+    "chart.js": "^4.6.1",
+    "react-draggable": "^4.7.2"
+  }
+}

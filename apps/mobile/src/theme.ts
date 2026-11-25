@@ -1,0 +1,16 @@
+export const colors = {
+  primary: "#0075de",
+  primaryActive: "#005bab",
+  canvas: "#ffffff",
+  canvasSoft: "#f6f5f4",
+  ink: "#000000",
+  inkSecondary: "#31302e",
+  inkMuted: "#615d59",
+  inkFaint: "#a39e98",
+  hairline: "#e6e6e6",
+  field: "#dddddd",
+  teal: "#2a9d99",
+  orange: "#dd5b00",
+  green: "#1aae39",
+  onPrimary: "#ffffff",
+};

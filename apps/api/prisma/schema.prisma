@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Club {
+  id           String        @id @default(cuid())
+  name         String
+  description  String        @default("")
+  goals        String        @default("")
+  logoUrl      String        @default("")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  memberships  Membership[]
+  players      Player[]
+  events       Event[]
+  transactions Transaction[]
+  photos         Photo[]
+  tactics        Tactic[]
+  attendances    Attendance[]
+  matchDocuments MatchDocument[]
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  memberships  Membership[]
+  players      Player[]
+}
+
+/// One role per person per club. `role` is plain text so a future "coach" value needs no migration.
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  clubId    String
+  role      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+  @@index([clubId])
+}
+
+/// Roster person. May exist before they have a login; `userId` links the account later.
+model Player {
+  id          String       @id @default(cuid())
+  clubId      String
+  userId      String?
+  name        String
+  position    String       @default("")
+  shirtNumber Int?
+  contact     String       @default("")
+  /// active | injured | left
+  status      String       @default("active")
+  injuryArea  String       @default("")
+  expectedReturnDate DateTime? @db.Date
+  goals       Int          @default(0)
+  assists     Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  attendances Attendance[]
+
+  @@index([clubId])
+  @@index([userId])
+}
+
+/// Training and matches share this table: the calendar, upcoming list, and match history.
+model Event {
+  id           String          @id @default(cuid())
+  clubId       String
+  /// training | match | leisure | friendly
+  type         String
+  name         String          @default("")
+  date         DateTime        @db.Date
+  startTime    String
+  location     String
+  notes        String          @default("")
+  opponent     String?
+  scoreFor     Int?
+  scoreAgainst Int?
+  /// win | loss | draw. Written by the server from the score.
+  result       String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  club         Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  attendances  Attendance[]
+  photos       Photo[]
+  documents    MatchDocument[]
+
+  @@index([clubId, date])
+}
+
+model Attendance {
+  id               String   @id @default(cuid())
+  clubId           String
+  playerId         String
+  eventId          String
+  /// unanswered | present | absent | maybe | late
+  status           String   @default("unanswered")
+  /// player | manager. Null while the row is still unanswered.
+  recordedBy       String?
+  recordedByUserId String?
+  updatedAt        DateTime @updatedAt
+  club             Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  player           Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  event            Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, eventId])
+  @@index([eventId])
+  @@index([clubId])
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  clubId    String
+  /// income | expense
+  type      String
+  amount    Decimal  @db.Decimal(12, 2)
+  date      DateTime @db.Date
+  item      String
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, date])
+}
+
+/// No v1 screen. A photo belongs to a club, and optionally to one event.
+model Photo {
+  id        String   @id @default(cuid())
+  clubId    String
+  eventId   String?
+  url       String   @default("")
+  caption   String   @default("")
+  createdAt DateTime @default(now())
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([clubId])
+  @@index([eventId])
+}
+
+/// No v1 screen. A file a manager would give a referee, attached to a match.
+model MatchDocument {
+  id        String   @id @default(cuid())
+  clubId    String
+  eventId   String
+  title     String
+  fileUrl   String   @default("")
+  createdAt DateTime @default(now())
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([eventId])
+}
+
+/// No v1 screen. Premium tactics board placeholder.
+model Tactic {
+  id        String   @id @default(cuid())
+  clubId    String
+  name      String
+  board     Json?
+  createdAt DateTime @default(now())
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+}

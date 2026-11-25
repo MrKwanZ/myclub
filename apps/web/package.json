@@ -1,0 +1,37 @@
+{
+  "name": "@myclub/web",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "predev": "node -e \"if(process.platform==='darwin'){const fs=require('fs'),cp=require('child_process');fs.mkdirSync('.next',{recursive:true});try{cp.execFileSync('xattr',['-w','com.apple.fileprovider.ignore#P','1','.next'])}catch{}}\"",
+    "prebuild": "npm run predev",
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@gravity-ui/icons": "^2.23.1",
+    "@gravity-ui/uikit": "^8.0.0",
+    "@heroui/react": "^3.2.7",
+    "@heroui/styles": "^3.2.7",
+    "@myclub/shared": "*",
+    "@tailwindcss/postcss": "^4.3.4",
+    "chart.js": "^4.6.1",
+    "motion": "^14.9.1",
+    "next": "^16.4.3",
+    "postcss": "^8.5.32",
+    "react": "19.3.1",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "^4.3.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "typescript": "^5.9.3"
+  }
+}
