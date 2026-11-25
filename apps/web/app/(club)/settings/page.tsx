@@ -4,8 +4,9 @@ import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
 import { notifyDanger, notifyLogoFailed, notifyLogoFormat, notifySaved, notifyZod } from "@/lib/notify";
 import { useSession } from "@/lib/session";
+import { applyTheme, readDark } from "@/lib/theme";
 import { clubPatchSchema, clubWriteSchema } from "@myclub/shared";
-import { Button, FieldError, Form, Input, Label, TextArea, TextField } from "@heroui/react";
+import { Button, Card, FieldError, Form, Input, Label, Switch, TextArea, TextField } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 
 type SettingsFieldErrors = {
@@ -144,6 +145,7 @@ export default function SettingsPage() {
       <div className="page-title">
         <h1>Settings</h1>
       </div>
+      <ThemeCard />
       <Form className="card stack" onSubmit={onSubmit}>
         <div className="field" data-invalid={fieldErrors.logo ? "true" : undefined}>
           <Label>Club logo</Label>
@@ -213,5 +215,39 @@ export default function SettingsPage() {
         </div>
       </Form>
     </>
+  );
+}
+
+function ThemeCard() {
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    setDark(readDark());
+  }, []);
+
+  return (
+    <Card>
+      <Card.Header>
+        <Card.Title>Appearance</Card.Title>
+        <Card.Description>Switch between light and dark mode.</Card.Description>
+      </Card.Header>
+      <Card.Content>
+        <Switch
+          aria-label="Dark mode"
+          isSelected={dark}
+          onChange={(selected) => {
+            setDark(selected);
+            applyTheme(selected);
+          }}
+        >
+          <Switch.Content data-testid="theme-toggle">
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            <Label>Dark mode</Label>
+          </Switch.Content>
+        </Switch>
+      </Card.Content>
+    </Card>
   );
 }

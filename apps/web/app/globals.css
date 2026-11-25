@@ -213,7 +213,7 @@ html.dark body { background: var(--canvas-soft); color: var(--ink); }
 .menu-item { display: inline-flex; align-items: center; gap: 8px; }
 .modal-form { width: min(640px, calc(100vw - 32px)); }
 .row-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
-.theme-toggle { position: fixed; right: 20px; bottom: 72px; z-index: 40; }
+.corner-action { position: fixed; right: 20px; bottom: 72px; z-index: 40; }
 
 /* Dropdown trigger: as wide as the selected option, never wider than its container. */
 .choice-menu { justify-self: start; width: auto; max-width: 100%; }

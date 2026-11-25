@@ -25,6 +25,11 @@ test.describe("Role guards, multi-club switching, and theme", () => {
       const shell = new ShellPage(page);
       await page.goto("/dashboard");
       await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+      await expect(page.getByTestId("theme-toggle")).toHaveCount(0);
+
+      await page.goto("/settings");
+      await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+      await expect(page.getByRole("switch", { name: "Dark mode" })).toBeVisible();
 
       const beforeDark = await page.evaluate(() => document.documentElement.classList.contains("dark"));
       await shell.toggleTheme();

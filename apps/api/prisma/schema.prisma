@@ -23,6 +23,7 @@ model Club {
   tactics        Tactic[]
   attendances    Attendance[]
   matchDocuments MatchDocument[]
+  statusNotices  StatusNotice[]
 }
 
 model User {
@@ -32,8 +33,9 @@ model User {
   passwordHash String
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
-  memberships  Membership[]
-  players      Player[]
+  memberships       Membership[]
+  players           Player[]
+  statusNoticeReads StatusNoticeRead[]
 }
 
 /// One role per person per club. `role` is plain text so a future "coach" value needs no migration.
@@ -63,6 +65,8 @@ model Player {
   status      String       @default("active")
   injuryArea  String       @default("")
   expectedReturnDate DateTime? @db.Date
+  leaveStart         DateTime? @db.Date
+  leaveEnd           DateTime? @db.Date
   goals              Int          @default(0)
   assists            Int          @default(0)
   yellowCards        Int          @default(0)
@@ -73,9 +77,37 @@ model Player {
   updatedAt   DateTime     @updatedAt
   club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  attendances Attendance[]
+  attendances   Attendance[]
+  statusNotices StatusNotice[]
 
   @@index([clubId])
+  @@index([userId])
+}
+
+/// A status the player reported. Each manager sees it once, on their next login.
+model StatusNotice {
+  id        String             @id @default(cuid())
+  clubId    String
+  playerId  String
+  message   String
+  remarks   String             @default("")
+  createdAt DateTime           @default(now())
+  club      Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  player    Player             @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  reads     StatusNoticeRead[]
+
+  @@index([clubId, createdAt])
+}
+
+model StatusNoticeRead {
+  id       String       @id @default(cuid())
+  noticeId String
+  userId   String
+  readAt   DateTime     @default(now())
+  notice   StatusNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, userId])
   @@index([userId])
 }
 

@@ -11,10 +11,14 @@ import {
   eventHasStarted,
   playerAccountSchema,
   rosterAttendanceMark,
+  injuryStatusMessage,
+  leaveStatusMessage,
   playerPatchSchema,
   playerRsvpSchema,
+  playerStatusReportSchema,
   playerWriteSchema,
   registerSchema,
+  statusNoticeReadSchema,
   transactionWriteSchema,
   type PlayerStatus,
 } from "@myclub/shared";
@@ -119,6 +123,8 @@ function playerJson(player: {
   saves: number;
   injuryArea: string;
   expectedReturnDate: Date | null;
+  leaveStart: Date | null;
+  leaveEnd: Date | null;
   userId: string | null;
   user?: { email: string } | null;
 }) {
@@ -137,6 +143,8 @@ function playerJson(player: {
     saves: player.saves,
     injuryArea: player.injuryArea,
     expectedReturnDate: player.expectedReturnDate ? isoFromDb(player.expectedReturnDate) : null,
+    leaveStart: player.leaveStart ? isoFromDb(player.leaveStart) : null,
+    leaveEnd: player.leaveEnd ? isoFromDb(player.leaveEnd) : null,
     userId: player.userId,
     accountEmail: player.user?.email ?? null,
   };
@@ -224,6 +232,44 @@ app.post("/auth/login", async (c) => {
 app.get("/auth/me", async (c) => {
   const user = await authenticate(c);
   return c.json({ user: await publicUser(user.id) });
+});
+
+app.get("/me/status-notices", async (c) => {
+  const user = await authenticate(c);
+  const memberships = await prisma.membership.findMany({
+    where: { userId: user.id, role: "manager" },
+    select: { clubId: true },
+  });
+  const clubIds = memberships.map((membership) => membership.clubId);
+  if (clubIds.length === 0) return c.json({ notices: [] });
+  const notices = await prisma.statusNotice.findMany({
+    where: { clubId: { in: clubIds }, reads: { none: { userId: user.id } } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, clubId: true, message: true, remarks: true },
+  });
+  return c.json({ notices });
+});
+
+app.post("/me/status-notices/read", async (c) => {
+  const user = await authenticate(c);
+  const body = parseBody(statusNoticeReadSchema, await readJson(c));
+  const memberships = await prisma.membership.findMany({
+    where: { userId: user.id, role: "manager" },
+    select: { clubId: true },
+  });
+  const clubIds = memberships.map((membership) => membership.clubId);
+  if (clubIds.length === 0) return c.json({ ok: true });
+  const notices = await prisma.statusNotice.findMany({
+    where: { id: { in: body.ids }, clubId: { in: clubIds } },
+    select: { id: true },
+  });
+  if (notices.length > 0) {
+    await prisma.statusNoticeRead.createMany({
+      data: notices.map((notice) => ({ noticeId: notice.id, userId: user.id })),
+      skipDuplicates: true,
+    });
+  }
+  return c.json({ ok: true });
 });
 
 app.get("/clubs", async (c) => {
@@ -403,6 +449,7 @@ app.post("/clubs/:clubId/players", async (c) => {
   assertManager(membership.role);
   const body = parseBody(playerWriteSchema, await readJson(c));
   const injured = body.status === "injured";
+  const onLeave = body.status === "left";
   const player = await prisma.player.create({
     data: {
       clubId,
@@ -419,6 +466,8 @@ app.post("/clubs/:clubId/players", async (c) => {
       saves: body.saves,
       injuryArea: injured ? body.injuryArea : "",
       expectedReturnDate: injured && body.expectedReturnDate ? utcDate(body.expectedReturnDate) : null,
+      leaveStart: onLeave && body.leaveStart ? utcDate(body.leaveStart) : null,
+      leaveEnd: onLeave && body.leaveEnd ? utcDate(body.leaveEnd) : null,
     },
   });
   if (player.status !== "left") await syncPlayerAttendance(player.id, clubId);
@@ -437,6 +486,7 @@ app.patch("/clubs/:clubId/players/:playerId", async (c) => {
   const body = parseBody(playerPatchSchema, await readJson(c));
   const status = body.status ?? existing.status;
   const injured = status === "injured";
+  const onLeave = status === "left";
   const injuryArea = injured ? (body.injuryArea ?? existing.injuryArea).trim() : "";
   if (injured && !injuryArea) throw new HttpError(400, "Injury Area is required.");
   const expectedReturnDate = !injured
@@ -445,6 +495,20 @@ app.patch("/clubs/:clubId/players/:playerId", async (c) => {
       ? existing.expectedReturnDate
       : body.expectedReturnDate
         ? utcDate(body.expectedReturnDate)
+        : null;
+  const leaveStart = !onLeave
+    ? null
+    : body.leaveStart === undefined
+      ? existing.leaveStart
+      : body.leaveStart
+        ? utcDate(body.leaveStart)
+        : null;
+  const leaveEnd = !onLeave
+    ? null
+    : body.leaveEnd === undefined
+      ? existing.leaveEnd
+      : body.leaveEnd
+        ? utcDate(body.leaveEnd)
         : null;
   const player = await prisma.player.update({
     where: { id: existing.id },
@@ -462,6 +526,8 @@ app.patch("/clubs/:clubId/players/:playerId", async (c) => {
       ...(body.saves !== undefined ? { saves: body.saves } : {}),
       injuryArea,
       expectedReturnDate,
+      leaveStart,
+      leaveEnd,
     },
   });
   if (player.status === "left") await dropFutureUnanswered(player.id);
@@ -530,6 +596,58 @@ app.post("/clubs/:clubId/players/:playerId/account", async (c) => {
     },
   });
   return c.json({ player: await playerDto(player.id), linkedExisting: false }, 201);
+});
+
+app.post("/clubs/:clubId/me/status", async (c) => {
+  const user = await authenticate(c);
+  const clubId = c.req.param("clubId");
+  const membership = await requireClub(user.id, clubId);
+  if (membership.role !== "player") throw new HttpError(403, "Only a player can report a status.");
+  const existing = await prisma.player.findFirst({ where: { clubId, userId: user.id } });
+  if (!existing) throw new HttpError(404, "Your roster profile is not linked.");
+  const body = parseBody(playerStatusReportSchema, await readJson(c));
+
+  if (body.kind === "injury") {
+    const injuryArea = (body.injuryArea ?? "").trim();
+    const expectedReturnDate = body.expectedReturnDate;
+    if (!injuryArea || !expectedReturnDate) throw new HttpError(400, "Injury Area is required.");
+    const player = await prisma.player.update({
+      where: { id: existing.id },
+      data: {
+        status: "injured",
+        injuryArea,
+        expectedReturnDate: utcDate(expectedReturnDate),
+        leaveStart: null,
+        leaveEnd: null,
+      },
+    });
+    await syncPlayerAttendance(player.id, clubId);
+    const message = injuryStatusMessage(existing.name, injuryArea, expectedReturnDate);
+    await prisma.statusNotice.create({
+      data: { clubId, playerId: player.id, message, remarks: body.remarks },
+    });
+    return c.json({ player: await playerDto(player.id) });
+  }
+
+  const leaveStart = body.leaveStart;
+  const leaveEnd = body.leaveEnd;
+  if (!leaveStart || !leaveEnd) throw new HttpError(400, "Leave Period is required.");
+  const player = await prisma.player.update({
+    where: { id: existing.id },
+    data: {
+      status: "left",
+      injuryArea: "",
+      expectedReturnDate: null,
+      leaveStart: utcDate(leaveStart),
+      leaveEnd: utcDate(leaveEnd),
+    },
+  });
+  await dropFutureUnanswered(player.id);
+  const message = leaveStatusMessage(existing.name, leaveStart, leaveEnd);
+  await prisma.statusNotice.create({
+    data: { clubId, playerId: player.id, message, remarks: "" },
+  });
+  return c.json({ player: await playerDto(player.id) });
 });
 
 app.get("/clubs/:clubId/events", async (c) => {

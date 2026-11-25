@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
 import { notifyDanger, notifyDeleted, notifySaved, notifyZod } from "@/lib/notify";
 import { useSession } from "@/lib/session";
-import { canonicalPosition, playerAccountSchema, playerStatusLabel, type PlayerDetail } from "@myclub/shared";
+import { canonicalPosition, formatDayMonth, playerAccountSchema, playerStatusLabel, type PlayerDetail } from "@myclub/shared";
 import { EllipsisVertical, Pencil, TrashBin } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
 import {
@@ -237,6 +237,18 @@ export default function PlayerDetailPage() {
                 <>
                   <InfoItem label="Saves" value={player.saves} />
                   <InfoItem label="Save percentage" value={`${player.savePercentage}%`} />
+                </>
+              ) : null}
+              {player.status === "injured" ? (
+                <InfoItem
+                  label="Expected return date"
+                  value={player.expectedReturnDate ? formatDayMonth(player.expectedReturnDate) : "–"}
+                />
+              ) : null}
+              {player.status === "left" ? (
+                <>
+                  <InfoItem label="Leave from" value={player.leaveStart ? formatDayMonth(player.leaveStart) : "–"} />
+                  <InfoItem label="Leave until" value={player.leaveEnd ? formatDayMonth(player.leaveEnd) : "–"} />
                 </>
               ) : null}
             </div>

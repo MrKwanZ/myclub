@@ -84,6 +84,22 @@ export function notifyZod(error: { issues: { message: string }[] }, fallback: st
   for (const issue of chosen) notifyDanger(issue.message);
 }
 
+export async function notifyStatusNotices(token: string) {
+  try {
+    const { notices } = await api.statusNotices(token);
+    if (notices.length === 0) return;
+    for (const notice of notices) {
+      toast(notice.message, notice.remarks ? { description: notice.remarks, variant: "default" } : { variant: "default" });
+    }
+    await api.readStatusNotices(
+      token,
+      notices.map((notice) => notice.id),
+    );
+  } catch {
+    return;
+  }
+}
+
 export async function notifyWelcome(token: string, user: AuthUser, clubId: string | null) {
   const role = user.memberships.find((membership) => membership.clubId === clubId)?.role ?? null;
   let description: string | undefined;

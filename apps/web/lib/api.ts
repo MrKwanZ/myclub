@@ -10,6 +10,7 @@ import type {
   Player,
   PlayerDetail,
   PlayerWrite,
+  StatusNotice,
   Transaction,
   TransactionWrite,
 } from "@myclub/shared";
@@ -134,6 +135,21 @@ export const api = {
   },
   myAttendance(token: string, clubId: string) {
     return request<{ records: MyAttendanceRecord[] }>(`/clubs/${clubId}/me/attendance`, { token });
+  },
+  reportStatus(
+    token: string,
+    clubId: string,
+    body:
+      | { kind: "injury"; injuryArea: string; expectedReturnDate: string; remarks?: string }
+      | { kind: "leave"; leaveStart: string; leaveEnd: string },
+  ) {
+    return request<{ player: Player }>(`/clubs/${clubId}/me/status`, { method: "POST", token, body });
+  },
+  statusNotices(token: string) {
+    return request<{ notices: StatusNotice[] }>("/me/status-notices", { token });
+  },
+  readStatusNotices(token: string, ids: string[]) {
+    return request<{ ok: true }>("/me/status-notices/read", { method: "POST", token, body: { ids } });
   },
   transactions(token: string, clubId: string) {
     return request<{ balance: string; transactions: Transaction[] }>(`/clubs/${clubId}/transactions`, { token });

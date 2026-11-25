@@ -12,7 +12,8 @@ import {
   playerWriteSchema,
   type Player,
 } from "@myclub/shared";
-import { Button, FieldError, Form, Input, Label, Modal, NumberField, TextField } from "@heroui/react";
+import { Calendar, DateField, DatePicker, DateRangePicker, FieldError, Form, Input, Label, Modal, NumberField, RangeCalendar, TextField, Button } from "@heroui/react";
+import { parseDate, type CalendarDate, type DateValue } from "@internationalized/date";
 import { useEffect, useState } from "react";
 
 export type PlayerForm = {
@@ -29,6 +30,8 @@ export type PlayerForm = {
   saves: number;
   injuryArea: string;
   expectedReturnDate: string;
+  leaveStart: string;
+  leaveEnd: string;
 };
 
 export const emptyPlayerForm: PlayerForm = {
@@ -45,6 +48,8 @@ export const emptyPlayerForm: PlayerForm = {
   saves: 0,
   injuryArea: "",
   expectedReturnDate: "",
+  leaveStart: "",
+  leaveEnd: "",
 };
 
 const statusOptions = playerStatuses.map((status) => ({ id: status, label: playerStatusLabel(status) }));
@@ -65,6 +70,8 @@ export function formFromPlayer(player: Player): PlayerForm {
     saves: player.saves ?? 0,
     injuryArea: player.injuryArea,
     expectedReturnDate: player.expectedReturnDate ?? "",
+    leaveStart: player.leaveStart ?? "",
+    leaveEnd: player.leaveEnd ?? "",
   };
 }
 
@@ -79,7 +86,9 @@ export type PlayerFieldKey =
   | "playedMinutes"
   | "saves"
   | "injuryArea"
-  | "expectedReturnDate";
+  | "expectedReturnDate"
+  | "leaveStart"
+  | "leaveEnd";
 export type PlayerFieldErrors = Partial<Record<PlayerFieldKey, string>>;
 
 function validateNonNegInt(value: number, label: string, max: number): string | null {
@@ -131,7 +140,32 @@ export function validatePlayerField(field: PlayerFieldKey, input: PlayerForm): s
     case "expectedReturnDate":
       if (input.status !== "injured") return null;
       return validateDateInput(input.expectedReturnDate, false);
+    case "leaveStart":
+      if (input.status !== "left") return null;
+      return validateDateInput(input.leaveStart, false);
+    case "leaveEnd":
+      if (input.status !== "left") return null;
+      if ((input.leaveStart && !input.leaveEnd) || (!input.leaveStart && input.leaveEnd)) {
+        return "Choose leave period.";
+      }
+      if (input.leaveStart && input.leaveEnd && input.leaveEnd < input.leaveStart) {
+        return "Leave until must be on or after the start.";
+      }
+      return validateDateInput(input.leaveEnd, false);
   }
+}
+
+function dateValue(iso: string): CalendarDate | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  try {
+    return parseDate(iso);
+  } catch {
+    return null;
+  }
+}
+
+function isoFromDate(value: DateValue | null): string {
+  return value ? value.toString() : "";
 }
 
 export function parsePlayerForm(input: PlayerForm) {
@@ -152,6 +186,8 @@ export function parsePlayerForm(input: PlayerForm) {
     saves: isGoalkeeper && Number.isFinite(input.saves) ? input.saves : 0,
     injuryArea: injured ? input.injuryArea : "",
     expectedReturnDate: injured && input.expectedReturnDate ? input.expectedReturnDate : null,
+    leaveStart: input.status === "left" && input.leaveStart ? input.leaveStart : null,
+    leaveEnd: input.status === "left" && input.leaveEnd ? input.leaveEnd : null,
   });
 }
 
@@ -208,6 +244,8 @@ export function PlayerFormModal({
       "saves",
       "injuryArea",
       "expectedReturnDate",
+      "leaveStart",
+      "leaveEnd",
     ];
     for (const key of keys) {
       const msg = validatePlayerField(key, form);
@@ -445,11 +483,16 @@ export function PlayerFormModal({
                       ...form,
                       status,
                       ...(status === "injured" ? {} : { injuryArea: "", expectedReturnDate: "" }),
+                      ...(status === "left" ? {} : { leaveStart: "", leaveEnd: "" }),
                     };
                     setForm(next);
                     if (status !== "injured") {
                       updateFieldError("injuryArea", null);
                       updateFieldError("expectedReturnDate", null);
+                    }
+                    if (status !== "left") {
+                      updateFieldError("leaveStart", null);
+                      updateFieldError("leaveEnd", null);
                     }
                   }}
                 />
@@ -471,25 +514,33 @@ export function PlayerFormModal({
                     <Input />
                     <FieldError>{fieldErrors.injuryArea}</FieldError>
                   </TextField>
-                  <TextField
-                    name="expectedReturnDate"
-                    type="date"
-                    isInvalid={Boolean(fieldErrors.expectedReturnDate)}
+                  <ReturnDateFields
                     value={form.expectedReturnDate}
-                    onChange={(value) => {
-                      const next = { ...form, expectedReturnDate: value };
+                    error={fieldErrors.expectedReturnDate}
+                    onChange={(expectedReturnDate) => {
+                      const next = { ...form, expectedReturnDate };
                       setForm(next);
                       if (fieldErrors.expectedReturnDate) {
                         updateFieldError("expectedReturnDate", validatePlayerField("expectedReturnDate", next));
                       }
                     }}
-                    onBlur={() => updateFieldError("expectedReturnDate", validatePlayerField("expectedReturnDate", form))}
-                  >
-                    <Label>Expected Return Date</Label>
-                    <Input />
-                    <FieldError>{fieldErrors.expectedReturnDate}</FieldError>
-                  </TextField>
+                  />
                 </>
+              ) : null}
+              {form.status === "left" ? (
+                <LeaveDateFields
+                  start={form.leaveStart}
+                  end={form.leaveEnd}
+                  error={fieldErrors.leaveEnd ?? fieldErrors.leaveStart}
+                  onChange={(leaveStart, leaveEnd) => {
+                    const next = { ...form, leaveStart, leaveEnd };
+                    setForm(next);
+                    if (fieldErrors.leaveStart || fieldErrors.leaveEnd) {
+                      updateFieldError("leaveStart", validatePlayerField("leaveStart", next));
+                      updateFieldError("leaveEnd", validatePlayerField("leaveEnd", next));
+                    }
+                  }}
+                />
               ) : null}
               {error ? <p className="muted wide">{error}</p> : null}
               <div className="wide">
@@ -502,5 +553,104 @@ export function PlayerFormModal({
         </Modal.Dialog>
       </Modal.Container>
     </Modal.Backdrop>
+  );
+}
+
+function ReturnDateFields({
+  value,
+  error,
+  onChange,
+}: {
+  value: string;
+  error?: string;
+  onChange: (value: string) => void;
+}) {
+  const selected = dateValue(value);
+  return (
+    <DatePicker
+      className="wide"
+      name="expectedReturnDate"
+      granularity="day"
+      value={selected}
+      isInvalid={Boolean(error)}
+      onChange={(next) => onChange(isoFromDate(next))}
+    >
+      <Label>Expected Return Date</Label>
+      <DateField.Group>
+        <DateField.Input>{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
+        <DateField.Suffix>
+          <DatePicker.Trigger>
+            <DatePicker.TriggerIndicator />
+          </DatePicker.Trigger>
+        </DateField.Suffix>
+      </DateField.Group>
+      <FieldError>{error}</FieldError>
+      <DatePicker.Popover>
+        <Calendar aria-label="Expected Return Date">
+          <Calendar.Header>
+            <Calendar.Heading />
+            <Calendar.NavButton slot="previous" />
+            <Calendar.NavButton slot="next" />
+          </Calendar.Header>
+          <Calendar.Grid>
+            <Calendar.GridHeader>{(day) => <Calendar.HeaderCell>{day}</Calendar.HeaderCell>}</Calendar.GridHeader>
+            <Calendar.GridBody>{(date) => <Calendar.Cell date={date} />}</Calendar.GridBody>
+          </Calendar.Grid>
+        </Calendar>
+      </DatePicker.Popover>
+    </DatePicker>
+  );
+}
+
+function LeaveDateFields({
+  start,
+  end,
+  error,
+  onChange,
+}: {
+  start: string;
+  end: string;
+  error?: string;
+  onChange: (start: string, end: string) => void;
+}) {
+  const startValue = dateValue(start);
+  const endValue = dateValue(end);
+  const range = startValue && endValue ? { start: startValue, end: endValue } : null;
+  return (
+    <DateRangePicker
+      className="wide"
+      startName="leaveStart"
+      endName="leaveEnd"
+      granularity="day"
+      value={range}
+      isInvalid={Boolean(error)}
+      onChange={(next) => onChange(isoFromDate(next?.start ?? null), isoFromDate(next?.end ?? null))}
+    >
+      <Label>Leave period</Label>
+      <DateField.Group fullWidth>
+        <DateField.Input slot="start">{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
+        <DateRangePicker.RangeSeparator />
+        <DateField.Input slot="end">{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
+        <DateField.Suffix>
+          <DateRangePicker.Trigger>
+            <DateRangePicker.TriggerIndicator />
+          </DateRangePicker.Trigger>
+        </DateField.Suffix>
+      </DateField.Group>
+      <FieldError>{error}</FieldError>
+      <DateRangePicker.Popover>
+        <RangeCalendar aria-label="Leave period">
+          <RangeCalendar.Header>
+            <RangeCalendar.Heading />
+            <RangeCalendar.NavButton slot="previous" />
+            <RangeCalendar.NavButton slot="next" />
+          </RangeCalendar.Header>
+          <RangeCalendar.Grid>
+            <RangeCalendar.GridHeader>{(day) => <RangeCalendar.HeaderCell>{day}</RangeCalendar.HeaderCell>}</RangeCalendar.GridHeader>
+            <RangeCalendar.GridBody>{(date) => <RangeCalendar.Cell date={date} />}</RangeCalendar.GridBody>
+          </RangeCalendar.Grid>
+        </RangeCalendar>
+      </DateRangePicker.Popover>
+    </DateRangePicker>
   );
 }

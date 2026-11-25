@@ -1,24 +1,14 @@
 "use client";
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
+import { PlayerStatusMenu } from "@/components/PlayerStatusMenu";
 import { notifySignedOut, notifySignOutFailed } from "@/lib/notify";
 import { useSession } from "@/lib/session";
-import {
-  ArrowRightFromSquare,
-  Calendar,
-  CircleDollar,
-  Gear,
-  House,
-  Moon,
-  Person,
-  Sun,
-} from "@gravity-ui/icons";
+import { ArrowRightFromSquare, Calendar, CircleDollar, Gear, House, Person } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
-import { Button, ToggleButton } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-const themeKey = "mc-theme";
 
 const managerLinks = [
   { href: "/dashboard", label: "Dashboard", icon: House },
@@ -37,13 +27,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const playerPath = pathname.startsWith("/play");
-  const [dark, setDark] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutHovered, setSignOutHovered] = useState(false);
-
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-  }, []);
 
   async function onSignOut() {
     if (signingOut) return;
@@ -58,12 +43,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
       notifySignOutFailed();
       setSigningOut(false);
     }
-  }
-
-  function onThemeChange(selected: boolean) {
-    setDark(selected);
-    document.documentElement.classList.toggle("dark", selected);
-    localStorage.setItem(themeKey, selected ? "dark" : "light");
   }
 
   useEffect(() => {
@@ -162,17 +141,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <main className="main" key={session.clubId ?? "none"}>
         {children}
       </main>
-      <div className="theme-toggle">
-        <ToggleButton
-          isIconOnly
-          isSelected={dark}
-          aria-label={dark ? "Dark mode" : "Light mode"}
-          data-testid="theme-toggle"
-          onChange={onThemeChange}
-        >
-          <Icon data={dark ? Moon : Sun} size={16} />
-        </ToggleButton>
-      </div>
+      {session.role === "player" ? <PlayerStatusMenu /> : null}
     </div>
   );
 }

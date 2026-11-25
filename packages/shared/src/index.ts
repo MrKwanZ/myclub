@@ -43,6 +43,16 @@ export function injuryUpdateLabel(player: {
   return player.injuryArea ? `${player.name}: ${player.injuryArea} - ${back}` : `${player.name} - ${back}`;
 }
 
+/** Manager toast after a player reports an injury. */
+export function injuryStatusMessage(name: string, injuryArea: string, expectedReturnDate: string) {
+  return `Player ${name} was reported ${injuryArea} and expected to be returned ${formatDayMonth(expectedReturnDate)}.`;
+}
+
+/** Manager toast after a player requests leave. */
+export function leaveStatusMessage(name: string, leaveStart: string, leaveEnd: string) {
+  return `Player ${name} was requested to leave during ${formatDayMonth(leaveStart)} and ${formatDayMonth(leaveEnd)}.`;
+}
+
 export function playerStatusLabel(status: string) {
   switch (status) {
     case "active":
@@ -162,6 +172,23 @@ const shirtNumberSchema = z
 
 const injuryAreaSchema = z.string().trim().max(80, "Injury area is too long.");
 
+function refineLeaveRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  ctx: z.RefinementCtx,
+) {
+  if ((start && !end) || (!start && end)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Choose both leave dates.", path: ["leaveEnd"] });
+  }
+  if (start && end && end < start) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Leave end must be on or after the start.",
+      path: ["leaveEnd"],
+    });
+  }
+}
+
 export const playerWriteSchema = z
   .object({
     name: z.string().trim().min(1, "Name is required.").max(80, "Name is too long."),
@@ -177,11 +204,14 @@ export const playerWriteSchema = z
     saves: z.number().int().min(0).max(9999).optional().default(0),
     injuryArea: injuryAreaSchema.optional().default(""),
     expectedReturnDate: dateSchema.nullable().optional(),
+    leaveStart: dateSchema.nullable().optional(),
+    leaveEnd: dateSchema.nullable().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.status === "injured" && !value.injuryArea.trim()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Injury Area is required.", path: ["injuryArea"] });
     }
+    if (value.status === "left") refineLeaveRange(value.leaveStart, value.leaveEnd, ctx);
   });
 
 export const playerPatchSchema = z
@@ -199,12 +229,57 @@ export const playerPatchSchema = z
     saves: z.number().int().min(0).max(9999).optional(),
     injuryArea: injuryAreaSchema.optional(),
     expectedReturnDate: dateSchema.nullable().optional(),
+    leaveStart: dateSchema.nullable().optional(),
+    leaveEnd: dateSchema.nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.status === "left" || value.leaveStart !== undefined || value.leaveEnd !== undefined) {
+      refineLeaveRange(value.leaveStart, value.leaveEnd, ctx);
+    }
   })
   .refine((value) => Object.keys(value).length > 0, "Nothing to update.");
 
 export const playerAccountSchema = z.object({
   email: emailSchema,
   password: z.union([passwordSchema, z.literal("")]).optional(),
+});
+
+const statusRemarksSchema = z.string().trim().max(2000, "Remarks are too long.");
+
+/** A player reports an injury or a leave from their own account. */
+export const playerStatusReportSchema = z
+  .object({
+    kind: z.enum(["injury", "leave"]),
+    injuryArea: injuryAreaSchema.optional().default(""),
+    expectedReturnDate: dateSchema.nullable().optional(),
+    remarks: statusRemarksSchema.optional().default(""),
+    leaveStart: dateSchema.nullable().optional(),
+    leaveEnd: dateSchema.nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind === "injury") {
+      if (!value.injuryArea.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Injury Area is required.", path: ["injuryArea"] });
+      }
+      if (!value.expectedReturnDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Expected Return Date is required.",
+          path: ["expectedReturnDate"],
+        });
+      }
+    }
+    if (value.kind === "leave") {
+      if (!value.leaveStart || !value.leaveEnd) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Leave Period is required.", path: ["leaveEnd"] });
+        return;
+      }
+      refineLeaveRange(value.leaveStart, value.leaveEnd, ctx);
+    }
+  });
+
+export const statusNoticeReadSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(50),
 });
 
 const eventNameSchema = z.string().trim().min(1, "Event name is required.").max(120, "Event name is too long.");
@@ -299,6 +374,8 @@ export interface Player {
   saves: number;
   injuryArea: string;
   expectedReturnDate: string | null;
+  leaveStart: string | null;
+  leaveEnd: string | null;
   userId: string | null;
   accountEmail: string | null;
   /** Last five past sessions, oldest first. Present/Late is "S"; anything else is "A". */
@@ -308,6 +385,13 @@ export interface Player {
 export interface PlayerDetail extends Player {
   attendanceRate: number;
   savePercentage: number;
+}
+
+export interface StatusNotice {
+  id: string;
+  clubId: string;
+  message: string;
+  remarks: string;
 }
 
 export interface AttendanceMark {
