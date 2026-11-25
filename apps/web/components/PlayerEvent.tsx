@@ -1,5 +1,6 @@
 "use client";
 
+import { ShowLineupButton } from "@/components/LineupPreviewModal";
 import { eventHasStarted, eventSummary, eventTypeLabel, formatEventCardDate, type ClubEvent } from "@myclub/shared";
 import { Button, Card, Chip, Dropdown, Label } from "@heroui/react";
 
@@ -19,10 +20,12 @@ export function playerReplyLabel(status: string) {
 export function PlayerEvent({
   event,
   pending,
+  showLineup = false,
   onReply,
 }: {
   event: ClubEvent;
   pending: boolean;
+  showLineup?: boolean;
   onReply: (status: PlayerReply) => void;
 }) {
   const status = event.myAttendance?.status ?? "unanswered";
@@ -52,37 +55,40 @@ export function PlayerEvent({
             {event.scoreFor}–{event.scoreAgainst} · {event.result}
           </p>
         ) : null}
-        <div className="row">
-          {pendingReply ? (
-            <Chip color="warning" size="sm" variant="soft">
-              Pending Reply
-            </Chip>
-          ) : null}
-          {unanswered && !pendingReply ? <span>Absent</span> : null}
-          <Dropdown>
-            <Button aria-label={selected} variant="secondary" isDisabled={pending}>
-              {pending ? "Saving…" : selected}
-            </Button>
-            <Dropdown.Popover>
-              <Dropdown.Menu
-                aria-label="Reply"
-                selectedKeys={new Set([unanswered ? "unanswered" : status])}
-                selectionMode="single"
-                onSelectionChange={(keys) => {
-                  if (keys === "all") return;
-                  const next = [...keys][0];
-                  if (next === "present" || next === "maybe" || next === "absent") onReply(next);
-                }}
-              >
-                {playerReplies.map((reply) => (
-                  <Dropdown.Item key={reply.id} id={reply.id} textValue={reply.label}>
-                    <Dropdown.ItemIndicator />
-                    <Label>{reply.label}</Label>
-                  </Dropdown.Item>
-                ))}
-              </Dropdown.Menu>
-            </Dropdown.Popover>
-          </Dropdown>
+        <div className="event-card-row">
+          <div className="row">
+            {pendingReply ? (
+              <Chip color="warning" size="sm" variant="soft">
+                Pending Reply
+              </Chip>
+            ) : null}
+            {unanswered && !pendingReply ? <span>Absent</span> : null}
+            <Dropdown>
+              <Button aria-label={selected} variant="secondary" isDisabled={pending}>
+                {pending ? "Saving…" : selected}
+              </Button>
+              <Dropdown.Popover>
+                <Dropdown.Menu
+                  aria-label="Reply"
+                  selectedKeys={new Set([unanswered ? "unanswered" : status])}
+                  selectionMode="single"
+                  onSelectionChange={(keys) => {
+                    if (keys === "all") return;
+                    const next = [...keys][0];
+                    if (next === "present" || next === "maybe" || next === "absent") onReply(next);
+                  }}
+                >
+                  {playerReplies.map((reply) => (
+                    <Dropdown.Item key={reply.id} id={reply.id} textValue={reply.label}>
+                      <Dropdown.ItemIndicator />
+                      <Label>{reply.label}</Label>
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+          </div>
+          {showLineup ? <ShowLineupButton event={event} /> : null}
         </div>
       </Card.Content>
     </Card>

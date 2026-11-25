@@ -13,6 +13,7 @@ model Club {
   description  String        @default("")
   goals        String        @default("")
   logoUrl      String        @default("")
+  jerseys      String[]      @default([])
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   memberships  Membership[]
@@ -178,6 +179,7 @@ model Event {
   scoreAgainst Int?
   /// win | loss | draw. Written by the server from the score.
   result       String?
+  lineup       Json?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   club         Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)

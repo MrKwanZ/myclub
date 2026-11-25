@@ -4,7 +4,15 @@ import { ChoiceMenu } from "@/components/ChoiceMenu";
 import { PlayerStatusMenu } from "@/components/PlayerStatusMenu";
 import { notifySignedOut, notifySignOutFailed } from "@/lib/notify";
 import { useSession } from "@/lib/session";
-import { ArrowRightFromSquare, Calendar, CircleDollar, Gear, House, Person } from "@gravity-ui/icons";
+import {
+  ArrowRightFromSquare,
+  Calendar,
+  ChartColumnStacked,
+  CircleDollar,
+  Gear,
+  House,
+  Person,
+} from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
 import { Button } from "@heroui/react";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,6 +22,7 @@ const managerLinks = [
   { href: "/dashboard", label: "Dashboard", icon: House },
   { href: "/roster", label: "Roster", icon: Person },
   { href: "/calendar", label: "Matches", icon: Calendar },
+  { href: "/lineup", label: "Lineup", icon: ChartColumnStacked },
   { href: "/finance", label: "Finance", icon: CircleDollar },
 ] as const;
 

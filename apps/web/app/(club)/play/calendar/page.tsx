@@ -202,7 +202,13 @@ function PlayerCalendar() {
         {dayEvents.length === 0 ? <p className="muted">Nothing on this day.</p> : null}
         {playerLinked
           ? dayEvents.map((event) => (
-              <PlayerEvent key={event.id} event={event} pending={pendingId === event.id} onReply={(status) => reply(event.id, status)} />
+              <PlayerEvent
+                key={event.id}
+                showLineup
+                event={event}
+                pending={pendingId === event.id}
+                onReply={(status) => reply(event.id, status)}
+              />
             ))
           : null}
       </section>

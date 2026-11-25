@@ -25,6 +25,7 @@
     "react": "19.3.1",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.3.1",
+    "react-draggable": "^4.7.2",
     "tailwindcss": "^4.3.4"
   },
   "devDependencies": {

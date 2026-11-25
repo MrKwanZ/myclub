@@ -6,6 +6,7 @@ import {
   eventPatchSchema,
   eventTypes,
   eventWriteSchema,
+  lineupWriteSchema,
   localISODate,
   loginSchema,
   managerAttendanceSchema,
@@ -86,13 +87,21 @@ function assertManager(role: string) {
   if (role !== "manager") throw new HttpError(403, "Only a manager can do that.");
 }
 
-function clubDto(club: { id: string; name: string; description: string; goals: string; logoUrl: string }) {
+function clubDto(club: {
+  id: string;
+  name: string;
+  description: string;
+  goals: string;
+  logoUrl: string;
+  jerseys?: string[];
+}) {
   return {
     id: club.id,
     name: club.name,
     description: club.description,
     goals: club.goals,
     logoUrl: club.logoUrl,
+    jerseys: club.jerseys ?? [],
   };
 }
 
@@ -466,6 +475,31 @@ app.post("/clubs/:clubId/logo", async (c) => {
   if (c.req.query("commit") === "0") return c.json({ logoUrl });
   const club = await prisma.club.update({ where: { id: clubId }, data: { logoUrl } });
   return c.json({ club: clubDto(club) });
+});
+
+app.post("/clubs/:clubId/jerseys", async (c) => {
+  const user = await authenticate(c);
+  const clubId = c.req.param("clubId");
+  const membership = await requireClub(user.id, clubId);
+  assertManager(membership.role);
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) throw new HttpError(400, "Choose an image.");
+  if (file.type !== "image/jpeg" && file.type !== "image/png") {
+    throw new HttpError(400, "Use a JPG or PNG image.");
+  }
+  if (file.size > 1_500_000) throw new HttpError(400, "Image must be 1.5 MB or smaller.");
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const jerseyUrl = `data:${file.type};base64,${bytes.toString("base64")}`;
+  if (c.req.query("commit") === "0") return c.json({ jerseyUrl });
+  const existing = await prisma.club.findUnique({ where: { id: clubId }, select: { jerseys: true } });
+  if (!existing) throw new HttpError(404, "Club not found.");
+  if (existing.jerseys.length >= 12) throw new HttpError(400, "Too many jerseys.");
+  const club = await prisma.club.update({
+    where: { id: clubId },
+    data: { jerseys: [...existing.jerseys, jerseyUrl] },
+  });
+  return c.json({ club: clubDto(club), jerseyUrl });
 });
 
 app.get("/clubs/:clubId/dashboard", async (c) => {
@@ -886,6 +920,38 @@ app.patch("/clubs/:clubId/events/:eventId", async (c) => {
     },
   });
   await syncEventAttendance(event.id, clubId);
+  return c.json({ event: eventDto(event) });
+});
+
+app.put("/clubs/:clubId/events/:eventId/lineup", async (c) => {
+  const user = await authenticate(c);
+  const clubId = c.req.param("clubId");
+  const membership = await requireClub(user.id, clubId);
+  assertManager(membership.role);
+  const existing = await prisma.event.findFirst({
+    where: { id: c.req.param("eventId"), clubId },
+  });
+  if (!existing) throw new HttpError(404, "Event not found.");
+  if (existing.type !== "match" && existing.type !== "friendly") {
+    throw new HttpError(400, "Lineup can only be attached to a match or friendly.");
+  }
+  const body = parseBody(lineupWriteSchema, await readJson(c));
+  const playerIds = body.players.map((player) => player.playerId);
+  const validPlayers = await prisma.player.count({
+    where: { clubId, id: { in: playerIds } },
+  });
+  if (validPlayers !== playerIds.length) {
+    throw new HttpError(400, "One or more selected players do not belong to this club.");
+  }
+  const event = await prisma.event.update({
+    where: { id: existing.id },
+    data: {
+      lineup: {
+        jerseyUrl: body.jerseyUrl ?? null,
+        players: body.players,
+      },
+    },
+  });
   return c.json({ event: eventDto(event) });
 });
 

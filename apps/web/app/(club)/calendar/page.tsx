@@ -1,6 +1,7 @@
 "use client";
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
+import { ShowLineupButton } from "@/components/LineupPreviewModal";
 import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
 import { initialDay } from "@/lib/calendarDay";
@@ -826,9 +827,12 @@ function DayEvent({
             </p>
           ) : null}
         </div>
-        <Button isIconOnly aria-label="Edit" variant="secondary" onPress={() => setOpen(true)}>
-          <Icon data={Pencil} size={16} />
-        </Button>
+        <div className="event-card-actions">
+          <ShowLineupButton event={event} />
+          <Button isIconOnly aria-label="Edit" variant="secondary" onPress={() => setOpen(true)}>
+            <Icon data={Pencil} size={16} />
+          </Button>
+        </div>
       </div>
       <Modal.Backdrop
         isOpen={open}

@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 import { formatDayMonth } from "./dates";
+import { jerseyDataUrlSchema, type MatchLineup } from "./lineup";
 
 export * from "./dates";
+export * from "./lineup";
 
 export const playerStatuses = ["active", "injured", "left"] as const;
 export const playerPositions = ["Goalkeeper", "Defender", "Midfielder", "Forward"] as const;
@@ -159,6 +161,7 @@ export const clubPatchSchema = z
     description: z.string().trim().max(4000, "Description is too long.").optional(),
     goals: z.string().trim().max(4000, "Goals are too long.").optional(),
     logoUrl: clubLogoSchema.optional(),
+    jerseys: z.array(jerseyDataUrlSchema).max(12, "Too many jerseys.").optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "Nothing to update.");
 
@@ -370,6 +373,7 @@ export interface Club {
   description: string;
   goals: string;
   logoUrl: string;
+  jerseys: string[];
 }
 
 export interface Membership {
@@ -472,6 +476,7 @@ export interface ClubEvent {
   scoreFor: number | null;
   scoreAgainst: number | null;
   result: MatchResult | null;
+  lineup?: MatchLineup | null;
   myAttendance?: AttendanceMark | null;
 }
 

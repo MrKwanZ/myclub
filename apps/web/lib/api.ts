@@ -7,6 +7,7 @@ import type {
   ClubWrite,
   Dashboard,
   EventWrite,
+  LineupWrite,
   MyAttendanceRecord,
   NotificationItem,
   NotificationWrite,
@@ -64,7 +65,7 @@ export const api = {
   club(token: string, clubId: string) {
     return request<{ club: Club }>(`/clubs/${clubId}`, { token });
   },
-  updateClub(token: string, clubId: string, body: Partial<ClubWrite>) {
+  updateClub(token: string, clubId: string, body: Partial<ClubWrite> & { logoUrl?: string; jerseys?: string[] }) {
     return request<{ club: Club }>(`/clubs/${clubId}`, { method: "PATCH", token, body });
   },
   async uploadLogo(token: string, clubId: string, file: File, options?: { commit?: boolean }) {
@@ -84,6 +85,24 @@ export const api = {
     const data = (await response.json().catch(() => ({}))) as { error?: string; club?: Club; logoUrl?: string };
     if (!response.ok) throw new ApiError(response.status, data.error ?? "Could not upload the logo.");
     return data as { club?: Club; logoUrl?: string };
+  },
+  async uploadJersey(token: string, clubId: string, file: File, options?: { commit?: boolean }) {
+    let response: Response;
+    const body = new FormData();
+    body.append("file", file);
+    const commit = options?.commit === false ? "?commit=0" : "";
+    try {
+      response = await fetch(`${base}/clubs/${clubId}/jerseys${commit}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      });
+    } catch {
+      throw new ApiError(0, "Can't reach the server. Start the API and try again.");
+    }
+    const data = (await response.json().catch(() => ({}))) as { error?: string; club?: Club; jerseyUrl?: string };
+    if (!response.ok) throw new ApiError(response.status, data.error ?? "Could not upload the jersey.");
+    return data as { club?: Club; jerseyUrl?: string };
   },
   dashboard(token: string, clubId: string) {
     return request<Dashboard>(`/clubs/${clubId}/dashboard`, { token });
@@ -121,6 +140,13 @@ export const api = {
   },
   updateEvent(token: string, clubId: string, eventId: string, body: Partial<EventWrite>) {
     return request<{ event: ClubEvent }>(`/clubs/${clubId}/events/${eventId}`, { method: "PATCH", token, body });
+  },
+  saveEventLineup(token: string, clubId: string, eventId: string, body: LineupWrite) {
+    return request<{ event: ClubEvent }>(`/clubs/${clubId}/events/${eventId}/lineup`, {
+      method: "PUT",
+      token,
+      body,
+    });
   },
   attendance(token: string, clubId: string, eventId: string) {
     return request<{ attendance: AttendanceRow[] }>(`/clubs/${clubId}/events/${eventId}/attendance`, { token });

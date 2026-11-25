@@ -1,4 +1,12 @@
-import { addDays, eventTypeLabel, localISODate, resultFromScores, type EventType } from "@myclub/shared";
+import {
+  addDays,
+  eventTypeLabel,
+  lineupWriteSchema,
+  localISODate,
+  resultFromScores,
+  type EventType,
+  type MatchLineup,
+} from "@myclub/shared";
 import type { Event } from "@prisma/client";
 import { prisma } from "./db";
 import { isoFromDb, moneyToString, todayUtc, utcDate } from "./dates";
@@ -198,6 +206,16 @@ export async function dashboardFor(clubId: string) {
   };
 }
 
+function parseStoredLineup(raw: unknown): MatchLineup | null {
+  if (!raw || typeof raw !== "object") return null;
+  const parsed = lineupWriteSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  return {
+    jerseyUrl: parsed.data.jerseyUrl ?? null,
+    players: parsed.data.players,
+  };
+}
+
 export function eventDto(event: Event, myAttendance?: { status: string; recordedBy: string | null } | null) {
   return {
     id: event.id,
@@ -211,6 +229,7 @@ export function eventDto(event: Event, myAttendance?: { status: string; recorded
     scoreFor: event.scoreFor,
     scoreAgainst: event.scoreAgainst,
     result: event.result as "win" | "loss" | "draw" | null,
+    lineup: parseStoredLineup(event.lineup),
     ...(myAttendance !== undefined ? { myAttendance } : {}),
   };
 }

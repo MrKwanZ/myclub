@@ -31,3 +31,4 @@ export const test = base.extend<Fixtures>({
 });
 
 export { expect };
+export type { Locator, Page } from "@playwright/test";
