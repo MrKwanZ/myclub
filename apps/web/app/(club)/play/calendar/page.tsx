@@ -2,7 +2,7 @@
 
 import { PlayerEvent, playerReplyLabel, type PlayerReply } from "@/components/PlayerEvent";
 import { api } from "@/lib/api";
-import { notifyDanger, notifyReplied } from "@/lib/notify";
+import { notifyDanger, notifyMaybeReminder, notifyReplied } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { formatLongDate, type ClubEvent } from "@myclub/shared";
 import { Button, Calendar } from "@heroui/react";
@@ -92,7 +92,11 @@ export default function PlayerCalendarPage() {
         ),
       );
       const label = playerReplyLabel(status);
-      if (label) notifyReplied(label);
+      if (label === "Yes" || label === "Maybe" || label === "No") notifyReplied(label);
+      if (status === "maybe") {
+        const event = events.find((item) => item.id === eventId);
+        notifyMaybeReminder(event?.name ?? "");
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not save your reply.";
       setError(message);

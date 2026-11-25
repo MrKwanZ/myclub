@@ -171,6 +171,10 @@ export const playerWriteSchema = z
     status: z.enum(playerStatuses).optional().default("active"),
     goals: z.number().int().min(0).max(999).optional().default(0),
     assists: z.number().int().min(0).max(999).optional().default(0),
+    yellowCards: z.number().int().min(0).max(999).optional().default(0),
+    redCards: z.number().int().min(0).max(999).optional().default(0),
+    playedMinutes: z.number().int().min(0).max(99999).optional().default(0),
+    saves: z.number().int().min(0).max(9999).optional().default(0),
     injuryArea: injuryAreaSchema.optional().default(""),
     expectedReturnDate: dateSchema.nullable().optional(),
   })
@@ -189,6 +193,10 @@ export const playerPatchSchema = z
     status: z.enum(playerStatuses).optional(),
     goals: z.number().int().min(0).max(999).optional(),
     assists: z.number().int().min(0).max(999).optional(),
+    yellowCards: z.number().int().min(0).max(999).optional(),
+    redCards: z.number().int().min(0).max(999).optional(),
+    playedMinutes: z.number().int().min(0).max(99999).optional(),
+    saves: z.number().int().min(0).max(9999).optional(),
     injuryArea: injuryAreaSchema.optional(),
     expectedReturnDate: dateSchema.nullable().optional(),
   })
@@ -285,10 +293,21 @@ export interface Player {
   status: PlayerStatus;
   goals: number;
   assists: number;
+  yellowCards: number;
+  redCards: number;
+  playedMinutes: number;
+  saves: number;
   injuryArea: string;
   expectedReturnDate: string | null;
   userId: string | null;
   accountEmail: string | null;
+  /** Last five past sessions, oldest first. Present/Late is "S"; anything else is "A". */
+  recentAttendance?: ("S" | "A")[];
+}
+
+export interface PlayerDetail extends Player {
+  attendanceRate: number;
+  savePercentage: number;
 }
 
 export interface AttendanceMark {

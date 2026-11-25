@@ -8,7 +8,9 @@ import {
   loginSchema,
   managerAttendanceSchema,
   canonicalPosition,
+  eventHasStarted,
   playerAccountSchema,
+  rosterAttendanceMark,
   playerPatchSchema,
   playerRsvpSchema,
   playerWriteSchema,
@@ -111,6 +113,10 @@ function playerJson(player: {
   status: string;
   goals: number;
   assists: number;
+  yellowCards: number;
+  redCards: number;
+  playedMinutes: number;
+  saves: number;
   injuryArea: string;
   expectedReturnDate: Date | null;
   userId: string | null;
@@ -125,6 +131,10 @@ function playerJson(player: {
     status: player.status as PlayerStatus,
     goals: player.goals,
     assists: player.assists,
+    yellowCards: player.yellowCards,
+    redCards: player.redCards,
+    playedMinutes: player.playedMinutes,
+    saves: player.saves,
     injuryArea: player.injuryArea,
     expectedReturnDate: player.expectedReturnDate ? isoFromDb(player.expectedReturnDate) : null,
     userId: player.userId,
@@ -297,10 +307,39 @@ app.get("/clubs/:clubId/players", async (c) => {
   const clubId = c.req.param("clubId");
   const membership = await requireClub(user.id, clubId);
   assertManager(membership.role);
-  const players = await prisma.player.findMany({
-    where: { clubId },
-    include: { user: { select: { email: true } } },
-  });
+  const [players, attendanceRows] = await Promise.all([
+    prisma.player.findMany({
+      where: { clubId },
+      include: { user: { select: { email: true } } },
+    }),
+    prisma.attendance.findMany({
+      where: { clubId },
+      select: {
+        playerId: true,
+        status: true,
+        event: { select: { date: true, startTime: true } },
+      },
+    }),
+  ]);
+  const now = new Date();
+  const recentByPlayer = new Map<string, ("S" | "A")[]>();
+  const grouped = new Map<string, { stamp: string; mark: "S" | "A" }[]>();
+  for (const row of attendanceRows) {
+    const date = isoFromDb(row.event.date);
+    if (!eventHasStarted(date, row.event.startTime, now)) continue;
+    const mark = rosterAttendanceMark(row.status, true);
+    if (!mark) continue;
+    const list = grouped.get(row.playerId) ?? [];
+    list.push({ stamp: `${date}T${row.event.startTime}`, mark });
+    grouped.set(row.playerId, list);
+  }
+  for (const [playerId, list] of grouped) {
+    list.sort((a, b) => b.stamp.localeCompare(a.stamp));
+    recentByPlayer.set(
+      playerId,
+      list.slice(0, 5).reverse().map((item) => item.mark),
+    );
+  }
   players.sort((a, b) => {
     if (a.shirtNumber == null && b.shirtNumber != null) return 1;
     if (a.shirtNumber != null && b.shirtNumber == null) return -1;
@@ -310,7 +349,50 @@ app.get("/clubs/:clubId/players", async (c) => {
     return a.name.localeCompare(b.name);
   });
   return c.json({
-    players: players.map((player) => playerJson(player)),
+    players: players.map((player) => ({
+      ...playerJson(player),
+      recentAttendance: recentByPlayer.get(player.id) ?? [],
+    })),
+  });
+});
+
+app.get("/clubs/:clubId/players/:playerId", async (c) => {
+  const user = await authenticate(c);
+  const clubId = c.req.param("clubId");
+  const membership = await requireClub(user.id, clubId);
+  assertManager(membership.role);
+  const player = await prisma.player.findFirst({
+    where: { id: c.req.param("playerId"), clubId },
+    include: { user: { select: { email: true } } },
+  });
+  if (!player) throw new HttpError(404, "Player not found.");
+
+  const [totalEvents, yesMaybeCount, lostScoresAgg] = await Promise.all([
+    prisma.event.count({ where: { clubId } }),
+    prisma.attendance.count({
+      where: {
+        clubId,
+        playerId: player.id,
+        status: { in: ["present", "maybe"] },
+      },
+    }),
+    prisma.event.aggregate({
+      where: { clubId, type: "match", scoreAgainst: { not: null } },
+      _sum: { scoreAgainst: true },
+    }),
+  ]);
+
+  const attendanceRate = totalEvents === 0 ? 0 : Math.round((yesMaybeCount / totalEvents) * 1000) / 10;
+  const lostScore = lostScoresAgg._sum.scoreAgainst ?? 0;
+  const saveDenom = player.saves + lostScore;
+  const savePercentage = saveDenom === 0 ? 0 : Math.round((player.saves / saveDenom) * 1000) / 10;
+
+  return c.json({
+    player: {
+      ...playerJson(player),
+      attendanceRate,
+      savePercentage,
+    },
   });
 });
 
@@ -331,6 +413,10 @@ app.post("/clubs/:clubId/players", async (c) => {
       status: body.status,
       goals: body.goals,
       assists: body.assists,
+      yellowCards: body.yellowCards,
+      redCards: body.redCards,
+      playedMinutes: body.playedMinutes,
+      saves: body.saves,
       injuryArea: injured ? body.injuryArea : "",
       expectedReturnDate: injured && body.expectedReturnDate ? utcDate(body.expectedReturnDate) : null,
     },
@@ -370,6 +456,10 @@ app.patch("/clubs/:clubId/players/:playerId", async (c) => {
       ...(body.status !== undefined ? { status: body.status } : {}),
       ...(body.goals !== undefined ? { goals: body.goals } : {}),
       ...(body.assists !== undefined ? { assists: body.assists } : {}),
+      ...(body.yellowCards !== undefined ? { yellowCards: body.yellowCards } : {}),
+      ...(body.redCards !== undefined ? { redCards: body.redCards } : {}),
+      ...(body.playedMinutes !== undefined ? { playedMinutes: body.playedMinutes } : {}),
+      ...(body.saves !== undefined ? { saves: body.saves } : {}),
       injuryArea,
       expectedReturnDate,
     },

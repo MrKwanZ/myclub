@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 /** Reveals the first page after a short async delay, then further pages on demand. */
-export function usePagedRows<T>(items: T[], pageSize = 5) {
+export function usePagedRows<T>(items: T[], pageSize = 5, initialSize = pageSize) {
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -12,14 +12,14 @@ export function usePagedRows<T>(items: T[], pageSize = 5) {
     setLoading(true);
     const timer = window.setTimeout(() => {
       if (cancelled) return;
-      setCount(Math.min(pageSize, items.length));
+      setCount(Math.min(initialSize, items.length));
       setLoading(false);
     }, 250);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [items, pageSize]);
+  }, [items, initialSize]);
 
   function loadMore() {
     setLoading(true);

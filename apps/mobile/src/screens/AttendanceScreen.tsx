@@ -1,4 +1,4 @@
-import { attendanceLabel, eventSummary, formatEventWhen, formatRepliedAt, type MyAttendanceRecord } from "@myclub/shared";
+import { eventHasStarted, eventSummary, formatEventWhen, formatRepliedAt, playerHistoryLabel, type MyAttendanceRecord } from "@myclub/shared";
 import { useCallback, useEffect, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api } from "../api";
@@ -56,7 +56,10 @@ export function AttendanceScreen() {
             {eventSummary(record)} · {record.location}
           </Text>
           <View style={styles.row}>
-            <Pill text={attendanceLabel(record.status)} tone={record.status} />
+            <Pill
+              text={playerHistoryLabel(record.status, eventHasStarted(record.date, record.startTime))}
+              tone={record.status === "unanswered" || record.status === "maybe" ? "absent" : record.status}
+            />
             <Text style={styles.muted}>Replied Date {formatRepliedAt(record.repliedAt)}</Text>
           </View>
         </View>

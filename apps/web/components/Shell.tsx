@@ -28,9 +28,8 @@ const managerLinks = [
 ] as const;
 
 const playerLinks = [
-  { href: "/play", label: "Upcoming" },
-  { href: "/play/calendar", label: "Calendar" },
-  { href: "/play/attendance", label: "My attendance" },
+  { href: "/play", label: "Dashboard", icon: House },
+  { href: "/play/calendar", label: "Matches", icon: Calendar },
 ] as const;
 
 export function Shell({ children }: { children: React.ReactNode }) {

@@ -183,6 +183,8 @@ p { margin: 0; }
 .dash-figure { font-size: 32px; font-weight: 700; letter-spacing: -0.04em; margin: 0; }
 .money-in { color: #1aae39; }
 .money-out { color: #dd5b00; }
+.score-win { color: var(--green); font-weight: 700; }
+.score-loss { color: #d31515; font-weight: 700; }
 .dash-chart { max-width: 220px; }
 html.dark {
   --canvas: #161616;
@@ -312,6 +314,11 @@ html.dark .chip-leisure { background: #3b2a66; color: #c4b5fd; }
 .event-card { display: grid; gap: 10px; }
 .event-card header,
 .event-card .card__header { display: flex; flex-direction: row; justify-content: space-between; gap: 12px; align-items: flex-start; }
+
+.player-header-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.player-info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.player-info-item { display: grid; gap: 4px; }
+.player-info-value { font-size: 18px; font-weight: 600; }
 
 @media (max-width: 960px) {
   .stats, .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

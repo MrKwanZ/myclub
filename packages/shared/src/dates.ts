@@ -99,6 +99,30 @@ export function attendanceLabel(status: string) {
   }
 }
 
+/** True once the event's local start time has been reached. */
+export function eventHasStarted(date: string, startTime: string, now = new Date()) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = startTime.split(":").map(Number);
+  const start = new Date(year, month - 1, day, hour || 0, minute || 0, 0, 0);
+  return now.getTime() >= start.getTime();
+}
+
+/**
+ * Player history label. A missing reply is Absent. Maybe stays Maybe until the
+ * event starts, then it counts as Absent.
+ */
+export function playerHistoryLabel(status: string, started: boolean) {
+  if (!status || status === "unanswered" || (status === "maybe" && started)) return "Absent";
+  return attendanceLabel(status);
+}
+
+/** Roster form guide. Past Present/Late is "S"; every other past reply is "A". */
+export function rosterAttendanceMark(status: string, started: boolean): "S" | "A" | null {
+  if (!started) return null;
+  if (status === "present" || status === "late") return "S";
+  return "A";
+}
+
 export function recorderLabel(recordedBy: string | null, viewer: "manager" | "player") {
   if (recordedBy === "player") return viewer === "player" ? "You replied" : "Player replied";
   if (recordedBy === "manager") return "Manager recorded";

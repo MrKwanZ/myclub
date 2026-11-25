@@ -63,9 +63,13 @@ model Player {
   status      String       @default("active")
   injuryArea  String       @default("")
   expectedReturnDate DateTime? @db.Date
-  goals       Int          @default(0)
-  assists     Int          @default(0)
-  createdAt   DateTime     @default(now())
+  goals              Int          @default(0)
+  assists            Int          @default(0)
+  yellowCards        Int          @default(0)
+  redCards           Int          @default(0)
+  playedMinutes      Int          @default(0)
+  saves              Int          @default(0)
+  createdAt          DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)

@@ -11,9 +11,10 @@ One login can belong to more than one club. The same person can manage one club 
 Managers use the web app.
 
 - **Club.** Create a club, then edit its name, description, goals, and logo.
-- **Roster.** Add players with position, shirt number, contact, goals, assists, and status (active, injured, or on leave). Create a login for a player, or link an email that already has an account.
+- **Roster.** Add players with position, shirt number, contact, goals, assists, yellow/red cards, played minutes, saves (for goalkeepers), and status (active, injured, or on leave). The roster table displays name, position, shirt number, status, and the last five past attendance marks (a success “S” chip for present or late, a danger “A” chip otherwise). Each player's name links to their full information view.
+- **Player information view.** View a player's full profile and stats on `/roster/[playerId]`, including calculated attendance rate (Yes/Maybe replies over total events) and goalkeeper save percentage (`saves / (saves + match goals conceded)`), plus an actions menu to edit, delete, or link/create a login.
 - **Calendar.** Schedule training, matches, friendlies, and leisure events with a name, place, start time, and notes. Record an opponent and a score for matches. The result (win, loss, or draw) is written from the score.
-- **Attendance.** Each active or injured player gets a row for every event. A manager can mark a player unanswered, present, absent, maybe, or late. Late counts as attended in the recent rate.
+- **Attendance.** Each active or injured player gets a row for every event. A manager can mark a player unanswered, present, absent, maybe, or late. Late counts as attended in the recent rate. A Maybe that is still open after the event starts counts as absent.
 - **Dashboard.** Incoming matches, recent results, a win/loss chart, top scorers, top assists, injury updates, and income, expenses, and balance.
 - **Finance.** Record income and expenses. The balance is income minus expenses.
 
@@ -21,9 +22,8 @@ Managers use the web app.
 
 Players use the Expo app or the same flows in the browser.
 
-- **Upcoming.** See the next sessions and reply. On the web the choices are Yes, Maybe, and No. On the phone the choices are Present and Absent.
+- **Dashboard.** The player home at `/play`. Three tabs: Upcoming Event (reply Yes, Maybe, or No; a future event with no reply starts as RSVP and shows a warning “Pending Reply” chip), Past Matches (a card per finished match, with the score in green for a win, the default text color for a draw, and red for a loss), and My Attendance (the seven most recent sessions first, then the next five on demand). A past session with no reply, or a Maybe that is still open after the start time, is shown as Absent. A Maybe reply shows a reminder to confirm the day before the event.
 - **Calendar.** Browse the club’s events by day.
-- **My attendance.** Review past replies for the current club.
 
 ## Repository
 

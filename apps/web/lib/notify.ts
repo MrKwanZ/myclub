@@ -28,6 +28,14 @@ export function notifyReplied(option: "Yes" | "Maybe" | "No") {
   toast(`You replied ${option}`, { variant: "default" });
 }
 
+export function notifyMaybeReminder(eventName: string) {
+  const name = eventName.trim() || "the event";
+  toast("Confirm your attendance", {
+    description: `You replied Maybe for ${name}. Please confirm the day before the event.`,
+    variant: "default",
+  });
+}
+
 export function notifyPlayerAdded() {
   toast.success("Player added");
 }

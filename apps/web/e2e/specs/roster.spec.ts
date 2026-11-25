@@ -52,7 +52,10 @@ test.describe("Manager Roster & Player Account Linking", () => {
     await expect(page.getByText("Marco Striker")).toBeVisible();
 
     // Edit Marco to left -> verify future unanswered attendance dropped
-    await page.getByRole("button", { name: "Edit Marco Striker" }).click();
+    await page.getByRole("link", { name: "Marco Striker" }).click();
+    await expect(page).toHaveURL(/\/roster\/.+/);
+    await page.getByRole("button", { name: "Player actions" }).click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     const editDialog = page.getByRole("dialog");
     await editDialog.getByRole("button", { name: "Status" }).click();
     await page.getByRole("menuitemradio", { name: /On leave|Left/i }).click();
@@ -64,19 +67,25 @@ test.describe("Manager Roster & Player Account Linking", () => {
     await expect(page.getByText(/0 of 11 present or late · Main Pitch/)).toBeVisible();
     await expect(page.getByText("Marco Striker")).toHaveCount(0);
 
-    // Link a player login via inline form on /roster
+    // Link a player login via inline form on player detail page
     await page.goto("/roster");
+    await page.getByRole("link", { name: "Seed Player 01" }).click();
     const linkEmail = uniqueEmail("linked");
-    await page.getByRole("button", { name: "Create login" }).first().click();
+    await page.getByRole("button", { name: "Create login" }).click();
     await page.getByLabel("Login email").fill(linkEmail);
     await page.getByLabel("Password").fill("Password123!");
     await page.getByRole("button", { name: "Save login" }).click();
     await expect(page.getByText(linkEmail)).toBeVisible();
 
-    // Scroll & delete Seed Player 11
+    // Scroll & delete Seed Player 11 via player detail page
+    await page.goto("/roster");
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.getByRole("button", { name: "Delete Seed Player 11" }).click();
+    await page.getByRole("link", { name: "Seed Player 11" }).click();
+    await page.getByRole("button", { name: "Player actions" }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await page.getByRole("dialog").getByRole("button", { name: /Delete/i }).click();
+    await expect(page).toHaveURL(/\/roster$/);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await expect(page.getByText("Seed Player 11")).toHaveCount(0);
     void upcomingTraining;
   });

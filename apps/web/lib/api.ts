@@ -8,6 +8,7 @@ import type {
   EventWrite,
   MyAttendanceRecord,
   Player,
+  PlayerDetail,
   PlayerWrite,
   Transaction,
   TransactionWrite,
@@ -85,6 +86,9 @@ export const api = {
   },
   players(token: string, clubId: string) {
     return request<{ players: Player[] }>(`/clubs/${clubId}/players`, { token });
+  },
+  player(token: string, clubId: string, playerId: string) {
+    return request<{ player: PlayerDetail }>(`/clubs/${clubId}/players/${playerId}`, { token });
   },
   createPlayer(token: string, clubId: string, body: PlayerWrite) {
     return request<{ player: Player }>(`/clubs/${clubId}/players`, { method: "POST", token, body });
