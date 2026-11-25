@@ -1,4 +1,5 @@
 import type {
+  Announcement,
   AttendanceRow,
   AuthUser,
   Club,
@@ -7,6 +8,8 @@ import type {
   Dashboard,
   EventWrite,
   MyAttendanceRecord,
+  NotificationItem,
+  NotificationWrite,
   Player,
   PlayerDetail,
   PlayerWrite,
@@ -145,11 +148,27 @@ export const api = {
   ) {
     return request<{ player: Player }>(`/clubs/${clubId}/me/status`, { method: "POST", token, body });
   },
+  announcements(token: string) {
+    return request<{ announcements: Announcement[] }>("/me/announcements", { token });
+  },
+  readAnnouncements(token: string, ids: string[]) {
+    return request<{ ok: true }>("/me/announcements/read", { method: "POST", token, body: { ids } });
+  },
+  createAnnouncement(token: string, clubId: string, body: { title: string; content: string }) {
+    return request<{ announcement: Announcement }>(`/clubs/${clubId}/announcements`, { method: "POST", token, body });
+  },
   statusNotices(token: string) {
     return request<{ notices: StatusNotice[] }>("/me/status-notices", { token });
   },
   readStatusNotices(token: string, ids: string[]) {
     return request<{ ok: true }>("/me/status-notices/read", { method: "POST", token, body: { ids } });
+  },
+  notifications(token: string, clubId: string | null) {
+    const suffix = clubId ? `?clubId=${encodeURIComponent(clubId)}` : "";
+    return request<{ notifications: NotificationItem[] }>(`/me/notifications${suffix}`, { token });
+  },
+  recordNotification(token: string, body: NotificationWrite) {
+    return request<{ notification: NotificationItem }>("/me/notifications", { method: "POST", token, body });
   },
   transactions(token: string, clubId: string) {
     return request<{ balance: string; transactions: Transaction[] }>(`/clubs/${clubId}/transactions`, { token });

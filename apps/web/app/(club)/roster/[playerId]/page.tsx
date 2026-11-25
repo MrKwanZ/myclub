@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { PlayerFormModal } from "@/components/PlayerFormModal";
 import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
@@ -157,31 +158,34 @@ export default function PlayerDetailPage() {
     <>
       <div className="page-heading">
         <Link href="/roster">Back to Roster</Link>
-        {player ? (
-          <Dropdown>
-            <Button isIconOnly aria-label="Player actions" variant="secondary">
-              <Icon data={EllipsisVertical} size={16} />
-            </Button>
-            <Dropdown.Popover>
-              <Dropdown.Menu
-                aria-label="Player actions"
-                onAction={(key) => {
-                  if (key === "edit") setEditing(true);
-                  if (key === "delete") setDeleting(true);
-                }}
-              >
-                <Dropdown.Item id="edit" textValue="Edit">
-                  <Icon data={Pencil} size={16} />
-                  <Label>Edit</Label>
-                </Dropdown.Item>
-                <Dropdown.Item id="delete" textValue="Delete" variant="danger">
-                  <Icon data={TrashBin} size={16} />
-                  <Label>Delete</Label>
-                </Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown.Popover>
-          </Dropdown>
-        ) : null}
+        <div className="page-actions">
+          <NotificationCentre />
+          {player ? (
+            <Dropdown>
+              <Button isIconOnly aria-label="Player actions" variant="secondary">
+                <Icon data={EllipsisVertical} size={16} />
+              </Button>
+              <Dropdown.Popover>
+                <Dropdown.Menu
+                  aria-label="Player actions"
+                  onAction={(key) => {
+                    if (key === "edit") setEditing(true);
+                    if (key === "delete") setDeleting(true);
+                  }}
+                >
+                  <Dropdown.Item id="edit" textValue="Edit">
+                    <Icon data={Pencil} size={16} />
+                    <Label>Edit</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="delete" textValue="Delete" variant="danger">
+                    <Icon data={TrashBin} size={16} />
+                    <Label>Delete</Label>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+          ) : null}
+        </div>
       </div>
 
       {error ? <p className="banner">{error}</p> : null}

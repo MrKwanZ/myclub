@@ -1,6 +1,7 @@
 "use client";
 
 import { Field } from "@/components/Field";
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
 import { notifyDanger, notifySaved } from "@/lib/notify";
 import { useSession } from "@/lib/session";
@@ -101,8 +102,11 @@ export default function AttendancePage() {
 
   return (
     <>
-      <div className="page-title">
-        <h1>Attendance</h1>
+      <div className="page-heading">
+        <div className="page-title">
+          <h1>Attendance</h1>
+        </div>
+        <NotificationCentre />
       </div>
       {events.length === 0 ? (
         <p className="muted">Add a training or match on the calendar first.</p>

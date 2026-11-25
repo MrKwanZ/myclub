@@ -1,6 +1,7 @@
 "use client";
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
 import { validateDateInput, validateMoneyInput, validateWithSchema } from "@/lib/fieldValidation";
 import {
@@ -240,10 +241,13 @@ export default function FinancePage() {
         <div className="page-title">
           <h1>Finance</h1>
         </div>
-        <Button variant="primary" onPress={openCreate}>
-          <Icon data={Plus} size={16} />
-          Create Transaction
-        </Button>
+        <div className="page-actions">
+          <NotificationCentre />
+          <Button variant="primary" onPress={openCreate}>
+            <Icon data={Plus} size={16} />
+            Create Transaction
+          </Button>
+        </div>
       </div>
       <article className="card balance-card">
         <div className="stat">

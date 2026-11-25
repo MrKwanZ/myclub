@@ -1,4 +1,6 @@
 import {
+  announcementReadSchema,
+  announcementWriteSchema,
   clubPatchSchema,
   clubWriteSchema,
   eventPatchSchema,
@@ -7,6 +9,8 @@ import {
   localISODate,
   loginSchema,
   managerAttendanceSchema,
+  notificationWindowDays,
+  notificationWriteSchema,
   canonicalPosition,
   eventHasStarted,
   playerAccountSchema,
@@ -270,6 +274,130 @@ app.post("/me/status-notices/read", async (c) => {
     });
   }
   return c.json({ ok: true });
+});
+
+function notificationDto(row: {
+  id: string;
+  clubId: string | null;
+  title: string;
+  description: string;
+  variant: string;
+  kind: string;
+  eventDate: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: row.id,
+    clubId: row.clubId,
+    title: row.title,
+    description: row.description,
+    variant: row.variant,
+    kind: row.kind,
+    eventDate: row.eventDate ? isoFromDb(row.eventDate) : null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+app.get("/me/notifications", async (c) => {
+  const user = await authenticate(c);
+  const clubId = c.req.query("clubId");
+  const since = new Date(Date.now() - notificationWindowDays * 24 * 60 * 60 * 1000);
+  const rows = await prisma.notification.findMany({
+    where: {
+      userId: user.id,
+      createdAt: { gte: since },
+      ...(clubId ? { OR: [{ clubId }, { clubId: null }] } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  return c.json({ notifications: rows.map(notificationDto) });
+});
+
+app.post("/me/notifications", async (c) => {
+  const user = await authenticate(c);
+  const body = parseBody(notificationWriteSchema, await readJson(c));
+  const clubId = body.clubId ?? null;
+  if (clubId) await requireClub(user.id, clubId);
+  const row = await prisma.notification.create({
+    data: {
+      userId: user.id,
+      clubId,
+      title: body.title,
+      description: body.description,
+      variant: body.variant,
+      kind: body.kind,
+      eventDate: body.eventDate ? utcDate(body.eventDate) : null,
+    },
+  });
+  return c.json({ notification: notificationDto(row) }, 201);
+});
+
+app.get("/me/announcements", async (c) => {
+  const user = await authenticate(c);
+  const memberships = await prisma.membership.findMany({
+    where: { userId: user.id },
+    select: { clubId: true },
+  });
+  const clubIds = memberships.map((membership) => membership.clubId);
+  if (clubIds.length === 0) return c.json({ announcements: [] });
+  const announcements = await prisma.announcement.findMany({
+    where: { clubId: { in: clubIds }, reads: { none: { userId: user.id } } },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+    select: { id: true, clubId: true, title: true, content: true },
+  });
+  return c.json({ announcements });
+});
+
+app.post("/me/announcements/read", async (c) => {
+  const user = await authenticate(c);
+  const body = parseBody(announcementReadSchema, await readJson(c));
+  const memberships = await prisma.membership.findMany({
+    where: { userId: user.id },
+    select: { clubId: true },
+  });
+  const clubIds = memberships.map((membership) => membership.clubId);
+  if (clubIds.length === 0) return c.json({ ok: true });
+  const announcements = await prisma.announcement.findMany({
+    where: { id: { in: body.ids }, clubId: { in: clubIds } },
+    select: { id: true },
+  });
+  if (announcements.length > 0) {
+    await prisma.announcementRead.createMany({
+      data: announcements.map((announcement) => ({ announcementId: announcement.id, userId: user.id })),
+      skipDuplicates: true,
+    });
+  }
+  return c.json({ ok: true });
+});
+
+app.post("/clubs/:clubId/announcements", async (c) => {
+  const user = await authenticate(c);
+  const clubId = c.req.param("clubId");
+  const membership = await requireClub(user.id, clubId);
+  assertManager(membership.role);
+  const body = parseBody(announcementWriteSchema, await readJson(c));
+  const announcement = await prisma.announcement.create({
+    data: {
+      clubId,
+      authorId: user.id,
+      title: body.title,
+      content: body.content,
+      reads: { create: { userId: user.id } },
+    },
+  });
+  return c.json(
+    {
+      announcement: {
+        id: announcement.id,
+        clubId: announcement.clubId,
+        title: announcement.title,
+        content: announcement.content,
+      },
+    },
+    201,
+  );
 });
 
 app.get("/clubs", async (c) => {

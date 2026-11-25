@@ -27,7 +27,7 @@ export default async function globalSetup() {
     {
       cwd: apiDir,
       input:
-        'TRUNCATE TABLE "StatusNoticeRead", "StatusNotice", "Attendance", "Transaction", "Photo", "MatchDocument", "Tactic", "Event", "Player", "Membership", "Club", "User" RESTART IDENTITY CASCADE;',
+        'TRUNCATE TABLE "AnnouncementRead", "Announcement", "Notification", "StatusNoticeRead", "StatusNotice", "Attendance", "Transaction", "Photo", "MatchDocument", "Tactic", "Event", "Player", "Membership", "Club", "User" RESTART IDENTITY CASCADE;',
       stdio: ["pipe", "inherit", "inherit"],
       env,
     },

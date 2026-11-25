@@ -1,7 +1,9 @@
 "use client";
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
+import { initialDay } from "@/lib/calendarDay";
 import {
   validateDateInput,
   validateIntInput,
@@ -47,7 +49,8 @@ import {
   type DateValue,
   type Time,
 } from "@internationalized/date";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 const typeOptions = eventTypes.map((type) => ({ id: type, label: eventTypeLabel(type) }));
 
@@ -62,7 +65,16 @@ function loadWindow(focused: CalendarDate) {
 }
 
 export default function CalendarPage() {
+  return (
+    <Suspense fallback={<p className="muted">Loading…</p>}>
+      <ManagerCalendar />
+    </Suspense>
+  );
+}
+
+function ManagerCalendar() {
   const session = useSession();
+  const requestedDate = useSearchParams().get("date");
   const [ready, setReady] = useState(false);
   const [focused, setFocused] = useState<CalendarDate | null>(null);
   const [selected, setSelected] = useState("");
@@ -72,11 +84,11 @@ export default function CalendarPage() {
   const [eventOpen, setEventOpen] = useState(false);
 
   useEffect(() => {
-    const now = today(getLocalTimeZone());
-    setFocused(now);
-    setSelected(now.toString());
+    const day = initialDay(requestedDate);
+    setFocused(day);
+    setSelected(day.toString());
     setReady(true);
-  }, []);
+  }, [requestedDate]);
 
   const rangeKey = focused ? `${focused.year}-${focused.month}` : "";
 
@@ -159,10 +171,13 @@ export default function CalendarPage() {
         <div className="page-title">
           <h1>Incoming Events</h1>
         </div>
-        <Button variant="primary" onPress={() => setEventOpen(true)}>
-          <Icon data={Plus} size={16} />
-          New Event
-        </Button>
+        <div className="page-actions">
+          <NotificationCentre />
+          <Button variant="primary" onPress={() => setEventOpen(true)}>
+            <Icon data={Plus} size={16} />
+            New Event
+          </Button>
+        </div>
       </div>
       <Calendar
         aria-label="Club calendar"

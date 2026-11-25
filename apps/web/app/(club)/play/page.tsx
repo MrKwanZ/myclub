@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { PlayerEvent, playerReplyLabel, type PlayerReply } from "@/components/PlayerEvent";
 import { api } from "@/lib/api";
 import { usePagedRows } from "@/lib/usePagedRows";
@@ -44,6 +45,10 @@ function PlayerDashboard() {
   const reminded = useRef(new Set<string>());
 
   useEffect(() => {
+    if (requested === "attendance" || requested === "matches" || requested === "upcoming") setTab(requested);
+  }, [requested]);
+
+  useEffect(() => {
     if (session.status !== "in" || !session.token || !session.clubId || session.role !== "player") return;
     const token = session.token;
     const clubId = session.clubId;
@@ -79,7 +84,7 @@ function PlayerDashboard() {
       if (event.date !== tomorrow || event.myAttendance?.status !== "maybe") continue;
       if (reminded.current.has(event.id)) continue;
       reminded.current.add(event.id);
-      notifyMaybeReminder(event.name);
+      notifyMaybeReminder(event);
     }
   }, [loaded, playerLinked, events]);
 
@@ -96,8 +101,7 @@ function PlayerDashboard() {
       const label = playerReplyLabel(status);
       if (label === "Yes" || label === "Maybe" || label === "No") notifyReplied(label);
       if (status === "maybe") {
-        const event = events.find((item) => item.id === eventId);
-        notifyMaybeReminder(event?.name ?? "");
+        notifyMaybeReminder(events.find((item) => item.id === eventId));
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not save your reply.";
@@ -110,8 +114,11 @@ function PlayerDashboard() {
 
   return (
     <div className="dash">
-      <div className="page-title">
-        <h1>Dashboard</h1>
+      <div className="page-heading">
+        <div className="page-title">
+          <h1>Dashboard</h1>
+        </div>
+        <NotificationCentre />
       </div>
       {error ? <p className="banner">{error}</p> : null}
       <Tabs selectedKey={tab} onSelectionChange={(key) => setTab(String(key))}>

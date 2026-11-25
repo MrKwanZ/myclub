@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { PlayerFormModal } from "@/components/PlayerFormModal";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
@@ -56,10 +57,13 @@ export default function RosterPage() {
         <div className="page-title">
           <h1>Roster</h1>
         </div>
-        <Button variant="primary" onPress={() => setCreating(true)}>
-          <Icon data={Plus} size={16} />
-          Create Player
-        </Button>
+        <div className="page-actions">
+          <NotificationCentre />
+          <Button variant="primary" onPress={() => setCreating(true)}>
+            <Icon data={Plus} size={16} />
+            Create Player
+          </Button>
+        </div>
       </div>
       {error ? <p className="banner">{error}</p> : null}
       {page.loading && page.rows.length === 0 ? (

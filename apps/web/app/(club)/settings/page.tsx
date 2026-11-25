@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
 import { notifyDanger, notifyLogoFailed, notifyLogoFormat, notifySaved, notifyZod } from "@/lib/notify";
@@ -142,8 +143,11 @@ export default function SettingsPage() {
 
   return (
     <>
-      <div className="page-title">
-        <h1>Settings</h1>
+      <div className="page-heading">
+        <div className="page-title">
+          <h1>Settings</h1>
+        </div>
+        <NotificationCentre />
       </div>
       <ThemeCard />
       <Form className="card stack" onSubmit={onSubmit}>

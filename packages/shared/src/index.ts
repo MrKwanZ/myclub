@@ -282,6 +282,29 @@ export const statusNoticeReadSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(50),
 });
 
+export const announcementWriteSchema = z.object({
+  title: z.string().trim().min(1, "Title is required.").max(120, "Title is too long."),
+  content: z.string().trim().min(1, "Content is required.").max(2000, "Content is too long."),
+});
+
+export const announcementReadSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(50),
+});
+
+export const notificationKinds = ["attendance", "event", "other"] as const;
+export const notificationVariants = ["default", "success", "danger"] as const;
+/** The notification centre lists toasts from this many days back. */
+export const notificationWindowDays = 3;
+
+export const notificationWriteSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  description: z.string().trim().max(2000).optional().default(""),
+  variant: z.enum(notificationVariants).optional().default("default"),
+  kind: z.enum(notificationKinds).optional().default("other"),
+  clubId: z.string().min(1).nullable().optional(),
+  eventDate: dateSchema.nullable().optional(),
+});
+
 const eventNameSchema = z.string().trim().min(1, "Event name is required.").max(120, "Event name is too long.");
 
 export const eventWriteSchema = z.object({
@@ -337,6 +360,9 @@ export type PlayerStatus = (typeof playerStatuses)[number];
 export type EventType = (typeof eventTypes)[number];
 export type MatchResult = (typeof matchResults)[number];
 export type AttendanceStatus = (typeof attendanceStatuses)[number];
+export type NotificationKind = (typeof notificationKinds)[number];
+export type NotificationVariant = (typeof notificationVariants)[number];
+export type NotificationWrite = z.input<typeof notificationWriteSchema>;
 
 export interface Club {
   id: string;
@@ -392,6 +418,41 @@ export interface StatusNotice {
   clubId: string;
   message: string;
   remarks: string;
+}
+
+export interface Announcement {
+  id: string;
+  clubId: string;
+  title: string;
+  content: string;
+}
+
+/** A toast that was shown to the user, kept for the notification centre. */
+export interface NotificationItem {
+  id: string;
+  clubId: string | null;
+  title: string;
+  description: string;
+  variant: NotificationVariant;
+  kind: NotificationKind;
+  eventDate: string | null;
+  createdAt: string;
+}
+
+/**
+ * Where a notification leads when clicked. Attendance replies open the dashboard attendance tab,
+ * event reminders open the calendar on the event day, and everything else stays put (null).
+ */
+export function notificationHref(
+  item: Pick<NotificationItem, "kind" | "eventDate">,
+  role: string | null,
+): string | null {
+  const player = role === "player";
+  if (item.kind === "attendance") return player ? "/play?tab=attendance" : "/dashboard";
+  if (item.kind === "event" && item.eventDate) {
+    return `${player ? "/play/calendar" : "/calendar"}?date=${item.eventDate}`;
+  }
+  return null;
 }
 
 export interface AttendanceMark {

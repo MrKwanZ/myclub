@@ -1,59 +1,116 @@
 "use client";
 
 import { api } from "@/lib/api";
-import { eventTypeLabel, formatLongDate, type AuthUser, type ClubEvent } from "@myclub/shared";
+import { CLUB_KEY, TOKEN_KEY } from "@/lib/storage";
+import {
+  eventTypeLabel,
+  formatLongDate,
+  type AuthUser,
+  type ClubEvent,
+  type NotificationKind,
+  type NotificationVariant,
+} from "@myclub/shared";
 import { toast } from "@heroui/react";
 
+type ShowOptions = {
+  variant?: NotificationVariant;
+  description?: string;
+  kind?: NotificationKind;
+  eventDate?: string | null;
+  token?: string;
+  clubId?: string | null;
+};
+
+const pending = new Set<Promise<unknown>>();
+
+function show(title: string, options: ShowOptions = {}) {
+  const variant = options.variant ?? "default";
+  const toastOptions = options.description ? { description: options.description } : {};
+  if (variant === "success") toast.success(title, toastOptions);
+  else if (variant === "danger") toast.danger(title, toastOptions);
+  else toast(title, { ...toastOptions, variant: "default" });
+  record(title, variant, options);
+}
+
+/** Signed-out toasts are not kept: the notification centre belongs to an account. */
+function record(title: string, variant: NotificationVariant, options: ShowOptions) {
+  const token = options.token ?? localStorage.getItem(TOKEN_KEY);
+  if (!token) return;
+  const clubId = options.clubId !== undefined ? options.clubId : localStorage.getItem(CLUB_KEY);
+  const job: Promise<unknown> = api
+    .recordNotification(token, {
+      title,
+      description: options.description ?? "",
+      variant,
+      kind: options.kind ?? "other",
+      clubId,
+      eventDate: options.eventDate ?? null,
+    })
+    .catch(() => undefined)
+    .finally(() => pending.delete(job));
+  pending.add(job);
+}
+
+/** Resolves once every toast shown so far has been saved for the notification centre. */
+export function notificationsSettled() {
+  return Promise.allSettled([...pending]);
+}
+
 export function notifySaved() {
-  toast.success("Saved successfully");
+  show("Saved successfully", { variant: "success" });
 }
 
 export function notifySignedOut() {
-  toast.success("Signed out successfully");
+  show("Signed out successfully", { variant: "success" });
 }
 
 export function notifySignOutFailed() {
-  toast.danger("Oops, something went wrong. Please try again.");
+  show("Oops, something went wrong. Please try again.", { variant: "danger" });
 }
 
 export function notifyLogoFormat() {
-  toast.danger("Unsupported format, please upload a valid image");
+  show("Unsupported format, please upload a valid image", { variant: "danger" });
 }
 
 export function notifyLogoFailed() {
-  toast.danger("Something went wrong during the image upload. Please try again");
+  show("Something went wrong during the image upload. Please try again", { variant: "danger" });
 }
 
 export function notifyReplied(option: "Yes" | "Maybe" | "No") {
-  toast(`You replied ${option}`, { variant: "default" });
+  show(`You replied ${option}`, { kind: "attendance" });
 }
 
-export function notifyMaybeReminder(eventName: string) {
-  const name = eventName.trim() || "the event";
-  toast("Confirm your attendance", {
+export function notifyMaybeReminder(event: { name: string; date: string } | undefined) {
+  const name = event?.name.trim() || "the event";
+  show("Confirm your attendance", {
     description: `You replied Maybe for ${name}. Please confirm the day before the event.`,
-    variant: "default",
+    kind: "event",
+    eventDate: event?.date ?? null,
   });
 }
 
 export function notifyPlayerAdded() {
-  toast.success("Player added");
+  show("Player added", { variant: "success" });
 }
 
 export function notifyEventCreated() {
-  toast.success("Event created");
+  show("Event created", { variant: "success" });
+}
+
+export function notifyAnnouncementCreated() {
+  show("Announcement created successfully", { variant: "success" });
 }
 
 export function notifyTransactionAdded() {
-  toast.success("Transaction added");
+  show("Transaction added", { variant: "success" });
 }
 
 export function notifyDeleted() {
-  toast.success("Deleted successfully");
+  show("Deleted successfully", { variant: "success" });
 }
 
 export function notifyRequired(field: string) {
-  toast.danger(`${field} is required`);
+  show(`${field} is required`, { variant: "danger" });
 }
 
 export function notifyDanger(message: string) {
@@ -62,19 +119,19 @@ export function notifyDanger(message: string) {
     message === "Incorrect password" ||
     message === "Unsupported format"
   ) {
-    toast.danger(message);
+    show(message, { variant: "danger" });
     return;
   }
   if (message === "Use a JPG or PNG image." || message === "Choose an image.") {
-    toast.danger("Unsupported format");
+    show("Unsupported format", { variant: "danger" });
     return;
   }
   const required = message.match(/^(.*) is required\.?$/i);
   if (required) {
-    toast.danger(`${required[1]} is required`);
+    show(`${required[1]} is required`, { variant: "danger" });
     return;
   }
-  toast.danger(message.replace(/\.$/, ""));
+  show(message.replace(/\.$/, ""), { variant: "danger" });
 }
 
 export function notifyZod(error: { issues: { message: string }[] }, fallback: string) {
@@ -89,7 +146,7 @@ export async function notifyStatusNotices(token: string) {
     const { notices } = await api.statusNotices(token);
     if (notices.length === 0) return;
     for (const notice of notices) {
-      toast(notice.message, notice.remarks ? { description: notice.remarks, variant: "default" } : { variant: "default" });
+      show(notice.message, { description: notice.remarks || undefined, token, clubId: notice.clubId });
     }
     await api.readStatusNotices(
       token,
@@ -100,19 +157,46 @@ export async function notifyStatusNotices(token: string) {
   }
 }
 
+/** Shows unread announcements the same way as any other toast, so the notification centre keeps them. */
+export async function notifyAnnouncements(token: string) {
+  try {
+    const { announcements } = await api.announcements(token);
+    if (announcements.length === 0) return;
+    for (const announcement of announcements) {
+      show(announcement.title, {
+        description: announcement.content || undefined,
+        token,
+        clubId: announcement.clubId,
+      });
+    }
+    await api.readAnnouncements(
+      token,
+      announcements.map((announcement) => announcement.id),
+    );
+  } catch {
+    return;
+  }
+}
+
 export async function notifyWelcome(token: string, user: AuthUser, clubId: string | null) {
   const role = user.memberships.find((membership) => membership.clubId === clubId)?.role ?? null;
+  let next: ClubEvent | undefined;
   let description: string | undefined;
   if (clubId) {
     try {
       const result = await api.events(token, clubId, { upcoming: "1" });
-      const next = result.events[0];
+      next = result.events[0];
       if (next) description = incomingCopy(next, role, result.playerLinked !== false);
     } catch {
       description = undefined;
     }
   }
-  toast(`Welcome ${user.name}`, description ? { description, variant: "default" } : { variant: "default" });
+  show(`Welcome ${user.name}`, {
+    description,
+    token,
+    clubId,
+    ...(next && description ? { kind: "event" as const, eventDate: next.date } : {}),
+  });
 }
 
 function incomingCopy(event: ClubEvent, role: string | null, playerLinked: boolean) {

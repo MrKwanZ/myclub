@@ -2,7 +2,7 @@
 
 import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
-import { notifyDanger, notifyStatusNotices, notifyWelcome, notifyZod } from "@/lib/notify";
+import { notifyAnnouncements, notifyDanger, notifyStatusNotices, notifyWelcome, notifyZod } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { loginSchema } from "@myclub/shared";
 import { Button, FieldError, Form, Input, Label, TextField } from "@heroui/react";
@@ -69,6 +69,7 @@ export default function LoginPage() {
       if (result.user.memberships.some((membership) => membership.role === "manager")) {
         await notifyStatusNotices(result.token);
       }
+      await notifyAnnouncements(result.token);
       router.push(role === "player" ? "/play" : "/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign in failed.";

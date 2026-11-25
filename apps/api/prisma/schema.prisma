@@ -24,6 +24,8 @@ model Club {
   attendances    Attendance[]
   matchDocuments MatchDocument[]
   statusNotices  StatusNotice[]
+  notifications  Notification[]
+  announcements  Announcement[]
 }
 
 model User {
@@ -36,6 +38,9 @@ model User {
   memberships       Membership[]
   players           Player[]
   statusNoticeReads StatusNoticeRead[]
+  notifications     Notification[]
+  announcements     Announcement[]
+  announcementReads AnnouncementRead[]
 }
 
 /// One role per person per club. `role` is plain text so a future "coach" value needs no migration.
@@ -108,6 +113,52 @@ model StatusNoticeRead {
   user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([noticeId, userId])
+  @@index([userId])
+}
+
+/// A toast shown to a user, listed in the notification centre for a few days.
+model Notification {
+  id          String    @id @default(cuid())
+  userId      String
+  clubId      String?
+  title       String
+  description String    @default("")
+  /// default | success | danger
+  variant     String    @default("default")
+  /// attendance | event | other. Decides where a click leads.
+  kind        String    @default("other")
+  eventDate   DateTime? @db.Date
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club        Club?     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// A message a manager posts to the club. Each member sees it once, as a toast on their next sign-in.
+model Announcement {
+  id        String             @id @default(cuid())
+  clubId    String
+  authorId  String
+  title     String
+  content   String
+  createdAt DateTime           @default(now())
+  club      Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  author    User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reads     AnnouncementRead[]
+
+  @@index([clubId, createdAt])
+}
+
+model AnnouncementRead {
+  id             String       @id @default(cuid())
+  announcementId String
+  userId         String
+  readAt         DateTime     @default(now())
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
   @@index([userId])
 }
 

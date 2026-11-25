@@ -202,6 +202,29 @@ html.dark body { background: var(--canvas-soft); color: var(--ink); }
 .main { padding: 32px 32px 96px; display: grid; gap: 24px; align-content: start; }
 .page-title { display: grid; gap: 6px; }
 .page-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.page-actions { display: flex; align-items: center; gap: 8px; }
+.notification-popover { width: min(360px, calc(100vw - 32px)); }
+.notification-loading { display: flex; justify-content: center; padding: 16px 0; }
+.notification-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; max-height: 360px; overflow-y: auto; }
+.notification-item {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.notification-item:hover { background: var(--canvas-soft); }
+.notification-dot { flex: none; width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; background: var(--ink-faint); }
+.notification-item[data-variant="success"] .notification-dot { background: var(--green); }
+.notification-item[data-variant="danger"] .notification-dot { background: var(--danger); }
+.notification-text { display: grid; gap: 2px; font-size: 14px; }
+.notification-text time { font-size: 12px; }
 .balance-card {
   display: flex;
   flex-direction: row;

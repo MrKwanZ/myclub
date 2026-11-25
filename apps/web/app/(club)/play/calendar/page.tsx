@@ -1,13 +1,16 @@
 "use client";
 
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { PlayerEvent, playerReplyLabel, type PlayerReply } from "@/components/PlayerEvent";
 import { api } from "@/lib/api";
+import { initialDay } from "@/lib/calendarDay";
 import { notifyDanger, notifyMaybeReminder, notifyReplied } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { formatLongDate, type ClubEvent } from "@myclub/shared";
 import { Button, Calendar } from "@heroui/react";
 import { getLocalTimeZone, parseDate, today, type CalendarDate, type DateValue } from "@internationalized/date";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 function loadWindow(focused: CalendarDate) {
   const start = focused.subtract({ months: 1 }).set({ day: 1 });
@@ -16,7 +19,16 @@ function loadWindow(focused: CalendarDate) {
 }
 
 export default function PlayerCalendarPage() {
+  return (
+    <Suspense fallback={<p className="muted">Loading…</p>}>
+      <PlayerCalendar />
+    </Suspense>
+  );
+}
+
+function PlayerCalendar() {
   const session = useSession();
+  const requestedDate = useSearchParams().get("date");
   const [ready, setReady] = useState(false);
   const [focused, setFocused] = useState<CalendarDate | null>(null);
   const [selected, setSelected] = useState("");
@@ -26,11 +38,11 @@ export default function PlayerCalendarPage() {
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   useEffect(() => {
-    const now = today(getLocalTimeZone());
-    setFocused(now);
-    setSelected(now.toString());
+    const day = initialDay(requestedDate);
+    setFocused(day);
+    setSelected(day.toString());
     setReady(true);
-  }, []);
+  }, [requestedDate]);
 
   const rangeKey = focused ? `${focused.year}-${focused.month}` : "";
 
@@ -94,8 +106,7 @@ export default function PlayerCalendarPage() {
       const label = playerReplyLabel(status);
       if (label === "Yes" || label === "Maybe" || label === "No") notifyReplied(label);
       if (status === "maybe") {
-        const event = events.find((item) => item.id === eventId);
-        notifyMaybeReminder(event?.name ?? "");
+        notifyMaybeReminder(events.find((item) => item.id === eventId));
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not save your reply.";
@@ -128,8 +139,11 @@ export default function PlayerCalendarPage() {
 
   return (
     <>
-      <div className="page-title">
-        <h1>Events Calendar</h1>
+      <div className="page-heading">
+        <div className="page-title">
+          <h1>Events Calendar</h1>
+        </div>
+        <NotificationCentre />
       </div>
       {error ? <p className="muted">{error}</p> : null}
       <Calendar

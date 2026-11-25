@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
 import { validateIntInput } from "@/lib/fieldValidation";
 import { notifyDanger, notifySaved } from "@/lib/notify";
@@ -44,8 +45,11 @@ export default function MatchesPage() {
 
   return (
     <>
-      <div className="page-title">
-        <h1>Matches</h1>
+      <div className="page-heading">
+        <div className="page-title">
+          <h1>Matches</h1>
+        </div>
+        <NotificationCentre />
       </div>
       <section className="stack">
         <h2>Still to play</h2>

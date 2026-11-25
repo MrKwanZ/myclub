@@ -1,9 +1,13 @@
 "use client";
 
+import { AnnouncementModal } from "@/components/AnnouncementModal";
+import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { formatEventWhen, injuryUpdateLabel, type Dashboard } from "@myclub/shared";
-import { Card, Tabs } from "@heroui/react";
+import { Plus } from "@gravity-ui/icons";
+import { Icon } from "@gravity-ui/uikit";
+import { Button, Card, Tabs } from "@heroui/react";
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from "chart.js";
 import { useEffect, useState } from "react";
 import { Doughnut } from "react-chartjs-2";
@@ -14,6 +18,7 @@ export default function DashboardPage() {
   const session = useSession();
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [announceOpen, setAnnounceOpen] = useState(false);
 
   useEffect(() => {
     if (
@@ -46,9 +51,21 @@ export default function DashboardPage() {
 
   return (
     <div className="dash">
-      <div className="page-title">
-        <h1>Dashboard</h1>
+      <div className="page-heading">
+        <div className="page-title">
+          <h1>Dashboard</h1>
+        </div>
+        <div className="page-actions">
+          <NotificationCentre />
+          {session.role === "manager" ? (
+            <Button variant="primary" onPress={() => setAnnounceOpen(true)}>
+              <Icon data={Plus} size={16} />
+              New Announcement
+            </Button>
+          ) : null}
+        </div>
       </div>
+      <AnnouncementModal open={announceOpen} onClose={() => setAnnounceOpen(false)} />
       <Tabs defaultSelectedKey="games">
         <Tabs.ListContainer>
           <Tabs.List aria-label="Dashboard">

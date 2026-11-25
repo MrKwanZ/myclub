@@ -6,6 +6,8 @@ MyClub is a club management assistant for amateur teams. One product serves many
 
 One login can belong to more than one club. The same person can manage one club and play for another. A club switcher appears when an account has more than one membership.
 
+- **Notification centre.** A bell button at the top right of every manager and player page, left of the page's own action button if it has one. Every toast shown while signed in is saved (`POST /me/notifications`). Opening the bell clears the toasts on screen, swaps the icon to a filled bell, and lists the current club's toasts from the past 3 days (`GET /me/notifications`) with a spinner while loading. A "You replied …" toast opens the My Attendance tab of the player dashboard. A toast about an incoming event (the welcome message with the next event, or the Maybe reminder) opens the calendar on that event's day (`?date=YYYY-MM-DD`). Other toasts are clickable but stay put.
+
 ### Manager
 
 Managers use the web app.
@@ -15,7 +17,7 @@ Managers use the web app.
 - **Player information view.** View a player's full profile and stats on `/roster/[playerId]`, including calculated attendance rate (Yes/Maybe replies over total events) and goalkeeper save percentage (`saves / (saves + match goals conceded)`). The expected return date, or the leave from and leave until dates, is the last row and only appears for that status. An actions menu can edit, delete, or link/create a login.
 - **Calendar.** Schedule training, matches, friendlies, and leisure events with a name, place, start time, and notes. Record an opponent and a score for matches. The result (win, loss, or draw) is written from the score.
 - **Attendance.** Each active or injured player gets a row for every event. A manager can mark a player unanswered, present, absent, maybe, or late. Late counts as attended in the recent rate. A Maybe that is still open after the event starts counts as absent.
-- **Dashboard.** Incoming matches, recent results, a win/loss chart, top scorers, top assists, injury updates, and income, expenses, and balance.
+- **Dashboard.** Incoming matches, recent results, a win/loss chart, top scorers, top assists, injury updates, and income, expenses, and balance. New Announcement posts a title and message to the club. The manager sees “Announcement created successfully” straight away. Every other member sees the announcement as a toast the next time they sign in, and opening the notification centre moves that toast into the list.
 - **Finance.** Record income and expenses. The balance is income minus expenses.
 
 ### Player
