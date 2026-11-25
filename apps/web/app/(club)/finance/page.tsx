@@ -2,6 +2,7 @@
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
 import { api } from "@/lib/api";
+import { validateDateInput, validateMoneyInput, validateWithSchema } from "@/lib/fieldValidation";
 import {
   notifyDanger,
   notifyDeleted,
@@ -24,6 +25,7 @@ import {
   Button,
   Chip,
   Dropdown,
+  FieldError,
   Form,
   Input,
   Label,
@@ -75,6 +77,7 @@ export default function FinancePage() {
   const [rows, setRows] = useState<Transaction[]>([]);
   const [balance, setBalance] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<"item" | "date" | "amount" | "notes", string>>>({});
   const [editor, setEditor] = useState<"create" | Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,14 +120,35 @@ export default function FinancePage() {
     };
   }, [session.status, session.role, load]);
 
+  function validateTransactionField(field: "item" | "date" | "amount" | "notes", value: string): string | null {
+    if (field === "item") return validateWithSchema(transactionWriteSchema.shape.item, value);
+    if (field === "date") return validateDateInput(value, true, "Date is required.");
+    if (field === "amount") return validateMoneyInput(value);
+    return validateWithSchema(transactionWriteSchema.shape.notes, value);
+  }
+
+  function updateFieldError(field: "item" | "date" | "amount" | "notes", message: string | null) {
+    setFieldErrors((current) => {
+      if (!message) {
+        if (!current[field]) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      }
+      return { ...current, [field]: message };
+    });
+  }
+
   function openCreate() {
     setForm({ ...emptyForm, date: localISODate() });
+    setFieldErrors({});
     setEditor("create");
     setError(null);
   }
 
   function openEdit(row: Transaction) {
     setForm(formFromTransaction(row));
+    setFieldErrors({});
     setEditor(row);
     setError(null);
   }
@@ -132,6 +156,16 @@ export default function FinancePage() {
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!session.token || !session.clubId || !editor) return;
+    const itemError = validateTransactionField("item", form.item);
+    const dateError = validateTransactionField("date", form.date);
+    const amountError = validateTransactionField("amount", form.amount);
+    const notesError = validateTransactionField("notes", form.notes);
+    setFieldErrors({
+      ...(itemError ? { item: itemError } : {}),
+      ...(dateError ? { date: dateError } : {}),
+      ...(amountError ? { amount: amountError } : {}),
+      ...(notesError ? { notes: notesError } : {}),
+    });
     if (!form.date.trim()) {
       setError("Date is required.");
       notifyRequired("Date");
@@ -336,9 +370,19 @@ export default function FinancePage() {
             </Modal.Header>
             <Modal.Body>
               <Form className="form-grid" onSubmit={onSubmit}>
-                <TextField name="item" value={form.item} onChange={(value) => setForm({ ...form, item: value })}>
+                <TextField
+                  name="item"
+                  isInvalid={Boolean(fieldErrors.item)}
+                  value={form.item}
+                  onChange={(value) => {
+                    setForm({ ...form, item: value });
+                    if (fieldErrors.item) updateFieldError("item", validateTransactionField("item", value));
+                  }}
+                  onBlur={() => updateFieldError("item", validateTransactionField("item", form.item))}
+                >
                   <Label>Name</Label>
                   <Input />
+                  <FieldError>{fieldErrors.item}</FieldError>
                 </TextField>
                 <div className="field">
                   <span>Type</span>
@@ -349,22 +393,50 @@ export default function FinancePage() {
                     onChange={(value) => setForm({ ...form, type: value === "expense" ? "expense" : "income" })}
                   />
                 </div>
-                <TextField name="date" type="date" value={form.date} onChange={(value) => setForm({ ...form, date: value })}>
+                <TextField
+                  name="date"
+                  type="date"
+                  isInvalid={Boolean(fieldErrors.date)}
+                  value={form.date}
+                  onChange={(value) => {
+                    setForm({ ...form, date: value });
+                    if (fieldErrors.date) updateFieldError("date", validateTransactionField("date", value));
+                  }}
+                  onBlur={() => updateFieldError("date", validateTransactionField("date", form.date))}
+                >
                   <Label>Date</Label>
                   <Input />
+                  <FieldError>{fieldErrors.date}</FieldError>
                 </TextField>
                 <TextField
                   name="amount"
                   type="number"
+                  isInvalid={Boolean(fieldErrors.amount)}
                   value={form.amount}
-                  onChange={(value) => setForm({ ...form, amount: value })}
+                  onChange={(value) => {
+                    setForm({ ...form, amount: value });
+                    if (fieldErrors.amount) updateFieldError("amount", validateTransactionField("amount", value));
+                  }}
+                  onBlur={() => updateFieldError("amount", validateTransactionField("amount", form.amount))}
                 >
                   <Label>Amount</Label>
                   <Input min={0} step="0.01" />
+                  <FieldError>{fieldErrors.amount}</FieldError>
                 </TextField>
-                <TextField className="wide" name="notes" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })}>
+                <TextField
+                  className="wide"
+                  name="notes"
+                  isInvalid={Boolean(fieldErrors.notes)}
+                  value={form.notes}
+                  onChange={(value) => {
+                    setForm({ ...form, notes: value });
+                    if (fieldErrors.notes) updateFieldError("notes", validateTransactionField("notes", value));
+                  }}
+                  onBlur={() => updateFieldError("notes", validateTransactionField("notes", form.notes))}
+                >
                   <Label>Notes</Label>
                   <TextArea />
+                  <FieldError>{fieldErrors.notes}</FieldError>
                 </TextField>
                 {error && editor ? <p className="muted wide">{error}</p> : null}
                 <div className="wide">

@@ -1,11 +1,10 @@
 "use client";
 
-import { Field } from "@/components/Field";
 import { api } from "@/lib/api";
 import { notifyDanger } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { clubWriteSchema, registerSchema } from "@myclub/shared";
-import { Button } from "@heroui/react";
+import { Button, FieldError, Form, Input, Label, TextArea, TextField } from "@heroui/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -20,6 +19,8 @@ const steps = [
   { id: "logo", label: "Club logo" },
 ] as const;
 
+type StepId = (typeof steps)[number]["id"];
+
 export default function RegisterPage() {
   const session = useSession();
   const router = useRouter();
@@ -31,85 +32,98 @@ export default function RegisterPage() {
   const [description, setDescription] = useState("");
   const [goals, setGoals] = useState("");
   const [logo, setLogo] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const current = steps[step];
   const last = step === steps.length - 1;
 
-  function validateStep() {
-    if (current.id === "name" || current.id === "email" || current.id === "password") {
-      const account = registerSchema.safeParse({
-        name: current.id === "name" ? name : name || "Placeholder",
-        email: current.id === "email" ? email : email || "placeholder@example.com",
-        password: current.id === "password" ? password : password || "placeholder",
-      });
-      if (current.id === "name" && !name.trim()) return "Name is required.";
-      if (current.id === "email") {
-        const check = registerSchema.shape.email.safeParse(email);
-        if (!check.success) return check.error.issues[0]?.message ?? "Enter a valid email.";
-      }
-      if (current.id === "password") {
-        if (!password) return "Password is required.";
-        const check = registerSchema.shape.password.safeParse(password);
-        if (!check.success) return check.error.issues[0]?.message ?? "Password is required.";
-      }
-      if (current.id === "name" && !account.success && name.trim()) {
-        return account.error.issues.find((issue) => issue.path[0] === "name")?.message ?? "Name is required.";
-      }
+  function validateStepValue(
+    stepId: StepId,
+    overrides?: Partial<{
+      name: string;
+      email: string;
+      password: string;
+      clubName: string;
+      description: string;
+      goals: string;
+      logo: File | null;
+    }>,
+  ): string | null {
+    const nextName = overrides?.name ?? name;
+    const nextEmail = overrides?.email ?? email;
+    const nextPassword = overrides?.password ?? password;
+    const nextClubName = overrides?.clubName ?? clubName;
+    const nextDescription = overrides?.description ?? description;
+    const nextGoals = overrides?.goals ?? goals;
+    const nextLogo = overrides && "logo" in overrides ? (overrides.logo ?? null) : logo;
+
+    if (stepId === "name") {
+      if (!nextName.trim()) return "Name is required.";
+      const check = registerSchema.shape.name.safeParse(nextName);
+      if (!check.success) return check.error.issues[0]?.message ?? "Name is required.";
     }
-    if (current.id === "club") {
-      const club = clubWriteSchema.shape.name.safeParse(clubName);
+    if (stepId === "email") {
+      const check = registerSchema.shape.email.safeParse(nextEmail);
+      if (!check.success) return check.error.issues[0]?.message ?? "Enter a valid email.";
+    }
+    if (stepId === "password") {
+      if (!nextPassword) return "Password is required.";
+      const check = registerSchema.shape.password.safeParse(nextPassword);
+      if (!check.success) return check.error.issues[0]?.message ?? "Password is required.";
+    }
+    if (stepId === "club") {
+      const club = clubWriteSchema.shape.name.safeParse(nextClubName);
       if (!club.success) return club.error.issues[0]?.message ?? "Club name is required.";
     }
-    if (current.id === "description") {
-      const check = clubWriteSchema.shape.description.safeParse(description);
+    if (stepId === "description") {
+      const check = clubWriteSchema.shape.description.safeParse(nextDescription);
       if (!check.success) return check.error.issues[0]?.message ?? "Description is too long.";
     }
-    if (current.id === "goals") {
-      const check = clubWriteSchema.shape.goals.safeParse(goals);
+    if (stepId === "goals") {
+      const check = clubWriteSchema.shape.goals.safeParse(nextGoals);
       if (!check.success) return check.error.issues[0]?.message ?? "Goals are too long.";
     }
-    if (current.id === "logo" && logo && logo.type !== "image/jpeg" && logo.type !== "image/png") {
-      return "Unsupported format";
+    if (stepId === "logo" && nextLogo && nextLogo.type !== "image/jpeg" && nextLogo.type !== "image/png") {
+      return "Unsupported format, please upload a valid image";
     }
     return null;
   }
 
   function onNext() {
-    const message = validateStep();
+    const message = validateStepValue(current.id);
     if (message) {
-      setError(message);
+      setFieldError(message);
       notifyDanger(message);
       return;
     }
-    setError(null);
+    setFieldError(null);
     setStep((value) => Math.min(value + 1, steps.length - 1));
   }
 
   async function onCreate() {
-    const message = validateStep();
+    const message = validateStepValue(current.id);
     if (message) {
-      setError(message);
+      setFieldError(message);
       notifyDanger(message);
       return;
     }
     const account = registerSchema.safeParse({ name, email, password });
     if (!account.success) {
       const issue = account.error.issues[0]?.message ?? "Check the form and try again.";
-      setError(issue);
+      setFieldError(issue);
       notifyDanger(issue);
       return;
     }
     const club = clubWriteSchema.safeParse({ name: clubName, description, goals });
     if (!club.success) {
       const issue = club.error.issues[0]?.message ?? "Check the club details.";
-      setError(issue);
+      setFieldError(issue);
       notifyDanger(issue);
       return;
     }
     setPending(true);
-    setError(null);
+    setFieldError(null);
     try {
       await api.register(account.data);
       const login = await api.login({ email: account.data.email, password: account.data.password });
@@ -118,7 +132,9 @@ export default function RegisterPage() {
       session.signIn(login.token, created.user, created.club.id);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the club.");
+      const errMsg = err instanceof Error ? err.message : "Could not create the club.";
+      setFieldError(errMsg);
+      notifyDanger(errMsg);
     } finally {
       setPending(false);
     }
@@ -126,7 +142,7 @@ export default function RegisterPage() {
 
   return (
     <main className="auth-wrap">
-      <form
+      <Form
         className="auth-card"
         onSubmit={(event) => {
           event.preventDefault();
@@ -142,52 +158,134 @@ export default function RegisterPage() {
           Step {step + 1} of {steps.length}. Nothing is saved until you finish.
         </p>
         {current.id === "name" ? (
-          <Field label="Your name">
-            <input value={name} onChange={(event) => setName(event.target.value)} />
-          </Field>
+          <TextField
+            name="name"
+            isInvalid={Boolean(fieldError)}
+            value={name}
+            onChange={(value) => {
+              setName(value);
+              if (fieldError) setFieldError(validateStepValue("name", { name: value }));
+            }}
+            onBlur={() => setFieldError(validateStepValue("name"))}
+          >
+            <Label>Your name</Label>
+            <Input />
+            <FieldError>{fieldError}</FieldError>
+          </TextField>
         ) : null}
         {current.id === "email" ? (
-          <Field label="Email">
-            <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-          </Field>
+          <TextField
+            name="email"
+            type="email"
+            isInvalid={Boolean(fieldError)}
+            value={email}
+            onChange={(value) => {
+              setEmail(value);
+              if (fieldError) setFieldError(validateStepValue("email", { email: value }));
+            }}
+            onBlur={() => setFieldError(validateStepValue("email"))}
+          >
+            <Label>Email</Label>
+            <Input autoComplete="email" />
+            <FieldError>{fieldError}</FieldError>
+          </TextField>
         ) : null}
         {current.id === "password" ? (
-          <Field label="Password">
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </Field>
+          <TextField
+            name="password"
+            type="password"
+            isInvalid={Boolean(fieldError)}
+            value={password}
+            onChange={(value) => {
+              setPassword(value);
+              if (fieldError) setFieldError(validateStepValue("password", { password: value }));
+            }}
+            onBlur={() => setFieldError(validateStepValue("password"))}
+          >
+            <Label>Password</Label>
+            <Input autoComplete="new-password" />
+            <FieldError>{fieldError}</FieldError>
+          </TextField>
         ) : null}
         {current.id === "club" ? (
-          <Field label="Club name">
-            <input value={clubName} onChange={(event) => setClubName(event.target.value)} />
-          </Field>
+          <TextField
+            name="clubName"
+            isInvalid={Boolean(fieldError)}
+            value={clubName}
+            onChange={(value) => {
+              setClubName(value);
+              if (fieldError) setFieldError(validateStepValue("club", { clubName: value }));
+            }}
+            onBlur={() => setFieldError(validateStepValue("club"))}
+          >
+            <Label>Club name</Label>
+            <Input />
+            <FieldError>{fieldError}</FieldError>
+          </TextField>
         ) : null}
         {current.id === "description" ? (
-          <Field label="Description">
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
-          </Field>
+          <TextField
+            name="description"
+            isInvalid={Boolean(fieldError)}
+            value={description}
+            onChange={(value) => {
+              setDescription(value);
+              if (fieldError) setFieldError(validateStepValue("description", { description: value }));
+            }}
+            onBlur={() => setFieldError(validateStepValue("description"))}
+          >
+            <Label>Description</Label>
+            <TextArea />
+            <FieldError>{fieldError}</FieldError>
+          </TextField>
         ) : null}
         {current.id === "goals" ? (
-          <Field label="Goals">
-            <textarea value={goals} onChange={(event) => setGoals(event.target.value)} />
-          </Field>
+          <TextField
+            name="goals"
+            isInvalid={Boolean(fieldError)}
+            value={goals}
+            onChange={(value) => {
+              setGoals(value);
+              if (fieldError) setFieldError(validateStepValue("goals", { goals: value }));
+            }}
+            onBlur={() => setFieldError(validateStepValue("goals"))}
+          >
+            <Label>Goals</Label>
+            <TextArea />
+            <FieldError>{fieldError}</FieldError>
+          </TextField>
         ) : null}
         {current.id === "logo" ? (
-          <Field label="Club logo">
+          <div className="field" data-invalid={fieldError ? "true" : undefined}>
+            <Label htmlFor="register-logo">Club logo</Label>
             <input
+              id="register-logo"
               type="file"
               accept="image/jpeg,image/png"
-              onChange={(event) => setLogo(event.target.files?.[0] ?? null)}
+              aria-invalid={Boolean(fieldError)}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                setLogo(file);
+                setFieldError(validateStepValue("logo", { logo: file }));
+              }}
             />
-          </Field>
+            {fieldError ? (
+              <span className="field-error" role="alert">
+                {fieldError}
+              </span>
+            ) : null}
+          </div>
         ) : null}
         <div className="row">
           {step > 0 ? (
-            <Button type="button" variant="ghost" onPress={() => setStep((value) => value - 1)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onPress={() => {
+                setFieldError(null);
+                setStep((value) => value - 1);
+              }}
+            >
               Back
             </Button>
           ) : null}
@@ -198,7 +296,7 @@ export default function RegisterPage() {
         <p className="muted">
           Already registered? <Link href="/login">Sign in</Link>
         </p>
-      </form>
+      </Form>
     </main>
   );
 }

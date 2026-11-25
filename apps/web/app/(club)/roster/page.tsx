@@ -2,6 +2,7 @@
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
 import { api } from "@/lib/api";
+import { validateDateInput, validateIntInput, validateWithSchema } from "@/lib/fieldValidation";
 import { notifyDanger, notifyDeleted, notifyPlayerAdded, notifySaved, notifyZod } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { usePagedRows } from "@/lib/usePagedRows";
@@ -16,7 +17,7 @@ import {
 } from "@myclub/shared";
 import { Pencil, Plus, TrashBin } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
-import { Button, Chip, Form, Input, Label, Modal, Spinner, Table, TextField } from "@heroui/react";
+import { Button, Chip, FieldError, Form, Input, Label, Modal, Spinner, Table, TextField } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type PlayerForm = {
@@ -75,15 +76,65 @@ function byShirt(a: Player, b: Player) {
   return a.name.localeCompare(b.name);
 }
 
+type PlayerFieldKey =
+  | "name"
+  | "shirtNumber"
+  | "contact"
+  | "goals"
+  | "assists"
+  | "injuryArea"
+  | "expectedReturnDate";
+type PlayerFieldErrors = Partial<Record<PlayerFieldKey, string>>;
+type AccountFieldErrors = Partial<Record<"email" | "password", string>>;
+
+function validatePlayerField(field: PlayerFieldKey, input: PlayerForm): string | null {
+  switch (field) {
+    case "name":
+      if (!input.name.trim()) return "Name is required.";
+      return input.name.trim().length > 80 ? "Name is too long." : null;
+    case "shirtNumber":
+      return validateIntInput(input.shirtNumber, {
+        min: 0,
+        max: 99,
+        rangeMessage: "Shirt number must be from 0 to 99.",
+        intMessage: "Shirt number must be a whole number.",
+      });
+    case "contact":
+      if (input.contact.trim().length > 120) return "Contact is too long.";
+      return /^[0-9-]*$/.test(input.contact.trim()) ? null : "Contact can only include numbers and hyphens.";
+    case "goals":
+      return validateIntInput(input.goals, {
+        min: 0,
+        max: 999,
+        rangeMessage: "Goals must be from 0 to 999.",
+      });
+    case "assists":
+      return validateIntInput(input.assists, {
+        min: 0,
+        max: 999,
+        rangeMessage: "Assists must be from 0 to 999.",
+      });
+    case "injuryArea":
+      if (input.status !== "injured") return null;
+      if (!input.injuryArea.trim()) return "Injury Area is required.";
+      return input.injuryArea.trim().length > 80 ? "Injury area is too long." : null;
+    case "expectedReturnDate":
+      if (input.status !== "injured") return null;
+      return validateDateInput(input.expectedReturnDate, false);
+  }
+}
+
 export default function RosterPage() {
   const session = useSession();
   const [players, setPlayers] = useState<Player[]>([]);
   const [form, setForm] = useState(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState<PlayerFieldErrors>({});
   const [editor, setEditor] = useState<"create" | Player | null>(null);
   const [deleting, setDeleting] = useState<Player | null>(null);
   const [accountFor, setAccountFor] = useState<string | null>(null);
   const [accountEmail, setAccountEmail] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
+  const [accountErrors, setAccountErrors] = useState<AccountFieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -109,14 +160,45 @@ export default function RosterPage() {
 
   function openCreate() {
     setForm(emptyForm);
+    setFieldErrors({});
     setEditor("create");
     setError(null);
   }
 
   function openEdit(player: Player) {
     setForm(formFromPlayer(player));
+    setFieldErrors({});
     setEditor(player);
     setError(null);
+  }
+
+  function updateFieldError(field: PlayerFieldKey, message: string | null) {
+    setFieldErrors((current) => {
+      if (!message) {
+        if (!current[field]) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      }
+      return { ...current, [field]: message };
+    });
+  }
+
+  function updateAccountError(field: "email" | "password", message: string | null) {
+    setAccountErrors((current) => {
+      if (!message) {
+        if (!current[field]) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      }
+      return { ...current, [field]: message };
+    });
+  }
+
+  function validateAccountField(field: "email" | "password", value: string): string | null {
+    if (field === "email") return validateWithSchema(playerAccountSchema.shape.email, value);
+    return validateWithSchema(playerAccountSchema.shape.password, value);
   }
 
   function parsePlayer(input: PlayerForm) {
@@ -138,6 +220,21 @@ export default function RosterPage() {
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!session.token || !session.clubId || !editor) return;
+    const nextErrors: PlayerFieldErrors = {};
+    const keys: PlayerFieldKey[] = [
+      "name",
+      "shirtNumber",
+      "contact",
+      "goals",
+      "assists",
+      "injuryArea",
+      "expectedReturnDate",
+    ];
+    for (const key of keys) {
+      const msg = validatePlayerField(key, form);
+      if (msg) nextErrors[key] = msg;
+    }
+    setFieldErrors(nextErrors);
     const parsed = parsePlayer(form);
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Check the player.";
@@ -187,6 +284,12 @@ export default function RosterPage() {
 
   async function onAccount(player: Player) {
     if (!session.token || !session.clubId) return;
+    const emailError = validateAccountField("email", accountEmail);
+    const passwordError = validateAccountField("password", accountPassword);
+    setAccountErrors({
+      ...(emailError ? { email: emailError } : {}),
+      ...(passwordError ? { password: passwordError } : {}),
+    });
     const parsed = playerAccountSchema.safeParse({ email: accountEmail, password: accountPassword });
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Check the login.";
@@ -332,13 +435,35 @@ export default function RosterPage() {
             if (player) void onAccount(player);
           }}
         >
-          <TextField name="email" type="email" value={accountEmail} onChange={setAccountEmail}>
+          <TextField
+            name="email"
+            type="email"
+            isInvalid={Boolean(accountErrors.email)}
+            value={accountEmail}
+            onChange={(value) => {
+              setAccountEmail(value);
+              if (accountErrors.email) updateAccountError("email", validateAccountField("email", value));
+            }}
+            onBlur={() => updateAccountError("email", validateAccountField("email", accountEmail))}
+          >
             <Label>Login email</Label>
             <Input />
+            <FieldError>{accountErrors.email}</FieldError>
           </TextField>
-          <TextField name="password" type="password" value={accountPassword} onChange={setAccountPassword}>
+          <TextField
+            name="password"
+            type="password"
+            isInvalid={Boolean(accountErrors.password)}
+            value={accountPassword}
+            onChange={(value) => {
+              setAccountPassword(value);
+              if (accountErrors.password) updateAccountError("password", validateAccountField("password", value));
+            }}
+            onBlur={() => updateAccountError("password", validateAccountField("password", accountPassword))}
+          >
             <Label>Password</Label>
             <Input />
+            <FieldError>{accountErrors.password}</FieldError>
           </TextField>
           <p className="muted wide">
             Leave the password blank to link an email that already has a MyClub login. The same person can be a player
@@ -361,7 +486,28 @@ export default function RosterPage() {
             </Modal.Header>
             <Modal.Body>
               <Form className="form-grid" onSubmit={onSubmit}>
-                <PlayerFields form={form} onChange={setForm} />
+                <PlayerFields
+                  form={form}
+                  fieldErrors={fieldErrors}
+                  onChange={(next) => {
+                    setForm(next);
+                    const keys: PlayerFieldKey[] = [
+                      "name",
+                      "shirtNumber",
+                      "contact",
+                      "goals",
+                      "assists",
+                      "injuryArea",
+                      "expectedReturnDate",
+                    ];
+                    for (const key of keys) {
+                      if (fieldErrors[key] || (key === "injuryArea" && next.status !== "injured")) {
+                        updateFieldError(key, validatePlayerField(key, next));
+                      }
+                    }
+                  }}
+                  onBlurField={(field) => updateFieldError(field, validatePlayerField(field, form))}
+                />
                 {error && editor ? <p className="muted wide">{error}</p> : null}
                 <div className="wide">
                   <Button type="submit" variant="primary" isDisabled={pending}>
@@ -398,13 +544,30 @@ export default function RosterPage() {
   );
 }
 
-function PlayerFields({ form, onChange }: { form: PlayerForm; onChange: (next: PlayerForm) => void }) {
+function PlayerFields({
+  form,
+  fieldErrors,
+  onChange,
+  onBlurField,
+}: {
+  form: PlayerForm;
+  fieldErrors: PlayerFieldErrors;
+  onChange: (next: PlayerForm) => void;
+  onBlurField: (field: PlayerFieldKey) => void;
+}) {
   const injured = form.status === "injured";
   return (
     <>
-      <TextField name="name" value={form.name} onChange={(value) => onChange({ ...form, name: value })}>
+      <TextField
+        name="name"
+        isInvalid={Boolean(fieldErrors.name)}
+        value={form.name}
+        onChange={(value) => onChange({ ...form, name: value })}
+        onBlur={() => onBlurField("name")}
+      >
         <Label>Name</Label>
         <Input />
+        <FieldError>{fieldErrors.name}</FieldError>
       </TextField>
       <div className="field">
         <span>Position</span>
@@ -418,28 +581,50 @@ function PlayerFields({ form, onChange }: { form: PlayerForm; onChange: (next: P
       <TextField
         name="shirtNumber"
         type="number"
+        isInvalid={Boolean(fieldErrors.shirtNumber)}
         value={form.shirtNumber}
         onChange={(value) => onChange({ ...form, shirtNumber: value })}
+        onBlur={() => onBlurField("shirtNumber")}
       >
         <Label>Shirt number</Label>
         <Input min={0} max={99} />
+        <FieldError>{fieldErrors.shirtNumber}</FieldError>
       </TextField>
       <TextField
         name="contact"
         type="text"
+        isInvalid={Boolean(fieldErrors.contact)}
         value={form.contact}
         onChange={(value) => onChange({ ...form, contact: value.replace(/[^0-9-]/g, "") })}
+        onBlur={() => onBlurField("contact")}
       >
         <Label>Contact</Label>
         <Input inputMode="tel" />
+        <FieldError>{fieldErrors.contact}</FieldError>
       </TextField>
-      <TextField name="goals" type="number" value={form.goals} onChange={(value) => onChange({ ...form, goals: value })}>
+      <TextField
+        name="goals"
+        type="number"
+        isInvalid={Boolean(fieldErrors.goals)}
+        value={form.goals}
+        onChange={(value) => onChange({ ...form, goals: value })}
+        onBlur={() => onBlurField("goals")}
+      >
         <Label>Goals</Label>
         <Input min={0} />
+        <FieldError>{fieldErrors.goals}</FieldError>
       </TextField>
-      <TextField name="assists" type="number" value={form.assists} onChange={(value) => onChange({ ...form, assists: value })}>
+      <TextField
+        name="assists"
+        type="number"
+        isInvalid={Boolean(fieldErrors.assists)}
+        value={form.assists}
+        onChange={(value) => onChange({ ...form, assists: value })}
+        onBlur={() => onBlurField("assists")}
+      >
         <Label>Assists</Label>
         <Input min={0} />
+        <FieldError>{fieldErrors.assists}</FieldError>
       </TextField>
       <div className="field">
         <span>Status</span>
@@ -458,18 +643,28 @@ function PlayerFields({ form, onChange }: { form: PlayerForm; onChange: (next: P
       </div>
       {injured ? (
         <>
-          <TextField name="injuryArea" value={form.injuryArea} onChange={(value) => onChange({ ...form, injuryArea: value })}>
+          <TextField
+            name="injuryArea"
+            isInvalid={Boolean(fieldErrors.injuryArea)}
+            value={form.injuryArea}
+            onChange={(value) => onChange({ ...form, injuryArea: value })}
+            onBlur={() => onBlurField("injuryArea")}
+          >
             <Label>Injury Area</Label>
             <Input />
+            <FieldError>{fieldErrors.injuryArea}</FieldError>
           </TextField>
           <TextField
             name="expectedReturnDate"
             type="date"
+            isInvalid={Boolean(fieldErrors.expectedReturnDate)}
             value={form.expectedReturnDate}
             onChange={(value) => onChange({ ...form, expectedReturnDate: value })}
+            onBlur={() => onBlurField("expectedReturnDate")}
           >
             <Label>Expected Return Date</Label>
             <Input />
+            <FieldError>{fieldErrors.expectedReturnDate}</FieldError>
           </TextField>
         </>
       ) : null}

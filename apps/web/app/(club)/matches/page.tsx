@@ -1,11 +1,18 @@
 "use client";
 
-import { Field } from "@/components/Field";
 import { api } from "@/lib/api";
+import { validateIntInput } from "@/lib/fieldValidation";
 import { notifyDanger, notifySaved } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { eventPatchSchema, formatEventWhen, localISODate, type ClubEvent } from "@myclub/shared";
+import { Button, FieldError, Form, Input, Label, TextField } from "@heroui/react";
 import { useCallback, useEffect, useState } from "react";
+
+type ScoreFieldErrors = {
+  opponent?: string;
+  scoreFor?: string;
+  scoreAgainst?: string;
+};
 
 export default function MatchesPage() {
   const session = useSession();
@@ -111,25 +118,54 @@ function ScoreForm({
   const [opponent, setOpponent] = useState(match.opponent ?? "");
   const [scoreFor, setScoreFor] = useState("");
   const [scoreAgainst, setScoreAgainst] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<ScoreFieldErrors>({});
   const [pending, setPending] = useState(false);
   const scoresClosed = match.date > localISODate();
+
+  function validateField(field: keyof ScoreFieldErrors, value: string): string | null {
+    if (field === "opponent") {
+      if (!value.trim()) return "Opponent is required.";
+      if (value.trim().length > 120) return "Opponent is too long.";
+      return null;
+    }
+    if (scoresClosed) return null;
+    return validateIntInput(value, {
+      required: true,
+      requiredMessage: field === "scoreFor" ? "Our score is required." : "Their score is required.",
+      min: 0,
+      max: 99,
+      rangeMessage: "Score must be from 0 to 99.",
+      intMessage: "Score must be a whole number.",
+    });
+  }
+
+  function updateFieldError(field: keyof ScoreFieldErrors, message: string | null) {
+    setFieldErrors((current) => {
+      if (!message) {
+        if (!current[field]) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      }
+      return { ...current, [field]: message };
+    });
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!session.token || !session.clubId) return;
-    if (!opponent.trim()) {
-      onError("Opponent is required.");
+    const opponentError = validateField("opponent", opponent);
+    const scoreForError = validateField("scoreFor", scoreFor);
+    const scoreAgainstError = validateField("scoreAgainst", scoreAgainst);
+    setFieldErrors({
+      ...(opponentError ? { opponent: opponentError } : {}),
+      ...(scoreForError ? { scoreFor: scoreForError } : {}),
+      ...(scoreAgainstError ? { scoreAgainst: scoreAgainstError } : {}),
+    });
+    const firstError = opponentError ?? scoreForError ?? scoreAgainstError;
+    if (firstError) {
+      onError(firstError);
       return;
-    }
-    if (!scoresClosed) {
-      if (scoreFor.trim() === "") {
-        onError("Our score is required.");
-        return;
-      }
-      if (scoreAgainst.trim() === "") {
-        onError("Their score is required.");
-        return;
-      }
     }
     const parsed = eventPatchSchema.safeParse({
       opponent,
@@ -156,36 +192,62 @@ function ScoreForm({
   }
 
   return (
-    <form className="card form-grid" onSubmit={onSubmit}>
+    <Form className="card form-grid" onSubmit={onSubmit}>
       <div className="wide">
         <strong>{formatEventWhen(match.date, match.startTime)}</strong>
         <p className="muted">{match.location}</p>
       </div>
-      <Field label="Opponent" wide>
-        <input value={opponent} onChange={(event) => setOpponent(event.target.value)} />
-      </Field>
-      <Field label="Our score">
-        <input
-          inputMode="numeric"
-          value={scoreFor}
-          disabled={scoresClosed}
-          onChange={(event) => setScoreFor(event.target.value)}
-        />
-      </Field>
-      <Field label="Their score">
-        <input
-          inputMode="numeric"
-          value={scoreAgainst}
-          disabled={scoresClosed}
-          onChange={(event) => setScoreAgainst(event.target.value)}
-        />
-      </Field>
+      <TextField
+        className="wide"
+        name="opponent"
+        isInvalid={Boolean(fieldErrors.opponent)}
+        value={opponent}
+        onChange={(value) => {
+          setOpponent(value);
+          if (fieldErrors.opponent) updateFieldError("opponent", validateField("opponent", value));
+        }}
+        onBlur={() => updateFieldError("opponent", validateField("opponent", opponent))}
+      >
+        <Label>Opponent</Label>
+        <Input />
+        <FieldError>{fieldErrors.opponent}</FieldError>
+      </TextField>
+      <TextField
+        name="scoreFor"
+        isDisabled={scoresClosed}
+        isInvalid={Boolean(fieldErrors.scoreFor)}
+        value={scoreFor}
+        onChange={(value) => {
+          setScoreFor(value);
+          if (fieldErrors.scoreFor) updateFieldError("scoreFor", validateField("scoreFor", value));
+        }}
+        onBlur={() => updateFieldError("scoreFor", validateField("scoreFor", scoreFor))}
+      >
+        <Label>Our score</Label>
+        <Input inputMode="numeric" />
+        <FieldError>{fieldErrors.scoreFor}</FieldError>
+      </TextField>
+      <TextField
+        name="scoreAgainst"
+        isDisabled={scoresClosed}
+        isInvalid={Boolean(fieldErrors.scoreAgainst)}
+        value={scoreAgainst}
+        onChange={(value) => {
+          setScoreAgainst(value);
+          if (fieldErrors.scoreAgainst) updateFieldError("scoreAgainst", validateField("scoreAgainst", value));
+        }}
+        onBlur={() => updateFieldError("scoreAgainst", validateField("scoreAgainst", scoreAgainst))}
+      >
+        <Label>Their score</Label>
+        <Input inputMode="numeric" />
+        <FieldError>{fieldErrors.scoreAgainst}</FieldError>
+      </TextField>
       {scoresClosed ? <p className="muted wide">Scores stay closed until the match date.</p> : null}
       <div className="wide">
-        <button className="btn btn-primary" type="submit" disabled={pending}>
+        <Button type="submit" variant="primary" isDisabled={pending}>
           {pending ? "Saving…" : "Save result"}
-        </button>
+        </Button>
       </div>
-    </form>
+    </Form>
   );
 }

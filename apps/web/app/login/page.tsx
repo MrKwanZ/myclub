@@ -1,20 +1,26 @@
 "use client";
 
-import { Field } from "@/components/Field";
 import { api } from "@/lib/api";
+import { validateWithSchema } from "@/lib/fieldValidation";
 import { notifyDanger, notifyWelcome, notifyZod } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { loginSchema } from "@myclub/shared";
+import { Button, FieldError, Form, Input, Label, TextField } from "@heroui/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+type LoginFieldErrors = {
+  email?: string;
+  password?: string;
+};
 
 export default function LoginPage() {
   const session = useSession();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -22,13 +28,34 @@ export default function LoginPage() {
     router.replace(session.role === "player" ? "/play" : "/dashboard");
   }, [session.status, session.role, router]);
 
+  function validateField(field: keyof LoginFieldErrors, value: string): string | null {
+    if (field === "email") return validateWithSchema(loginSchema.shape.email, value);
+    return validateWithSchema(loginSchema.shape.password, value);
+  }
+
+  function updateFieldError(field: keyof LoginFieldErrors, message: string | null) {
+    setFieldErrors((current) => {
+      if (!message) {
+        if (!current[field]) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      }
+      return { ...current, [field]: message };
+    });
+  }
+
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setError(null);
+    const emailError = validateField("email", email);
+    const passwordError = validateField("password", password);
+    setFieldErrors({
+      ...(emailError ? { email: emailError } : {}),
+      ...(passwordError ? { password: passwordError } : {}),
+    });
     const parsed = loginSchema.safeParse({ email, password });
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? "Check the form and try again.";
-      setError(message);
       notifyZod(parsed.error, message);
       return;
     }
@@ -42,7 +69,6 @@ export default function LoginPage() {
       router.push(role === "player" ? "/play" : "/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign in failed.";
-      setError(message);
       notifyDanger(message);
     } finally {
       setPending(false);
@@ -51,30 +77,49 @@ export default function LoginPage() {
 
   return (
     <main className="auth-wrap">
-      <form className="auth-card" onSubmit={onSubmit}>
+      <Form className="auth-card" onSubmit={onSubmit}>
         <div>
           <p className="eyebrow">MYCLUB</p>
           <h1>Sign in</h1>
         </div>
         <p className="muted">Managers run the club on the web. Players reply to training and matches.</p>
-        <Field label="Email">
-          <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-        </Field>
-        <Field label="Password">
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </Field>
-        <button className="btn btn-primary" type="submit" disabled={pending}>
+        <TextField
+          name="email"
+          type="email"
+          isInvalid={Boolean(fieldErrors.email)}
+          value={email}
+          onChange={(value) => {
+            setEmail(value);
+            if (fieldErrors.email) updateFieldError("email", validateField("email", value));
+          }}
+          onBlur={() => updateFieldError("email", validateField("email", email))}
+        >
+          <Label>Email</Label>
+          <Input autoComplete="email" />
+          <FieldError>{fieldErrors.email}</FieldError>
+        </TextField>
+        <TextField
+          name="password"
+          type="password"
+          isInvalid={Boolean(fieldErrors.password)}
+          value={password}
+          onChange={(value) => {
+            setPassword(value);
+            if (fieldErrors.password) updateFieldError("password", validateField("password", value));
+          }}
+          onBlur={() => updateFieldError("password", validateField("password", password))}
+        >
+          <Label>Password</Label>
+          <Input autoComplete="current-password" />
+          <FieldError>{fieldErrors.password}</FieldError>
+        </TextField>
+        <Button type="submit" variant="primary" isDisabled={pending}>
           {pending ? "Signing in…" : "Sign in"}
-        </button>
+        </Button>
         <p className="muted">
           New club? <Link href="/register">Create one</Link>
         </p>
-      </form>
+      </Form>
     </main>
   );
 }

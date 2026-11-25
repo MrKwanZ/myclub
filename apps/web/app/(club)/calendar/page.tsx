@@ -2,6 +2,12 @@
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
 import { api } from "@/lib/api";
+import {
+  validateDateInput,
+  validateIntInput,
+  validateTimeInput,
+  validateWithSchema,
+} from "@/lib/fieldValidation";
 import { notifyDanger, notifyEventCreated, notifySaved } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import {
@@ -23,6 +29,7 @@ import {
   Chip,
   DateField,
   DatePicker,
+  FieldError,
   Form,
   Input,
   Label,
@@ -282,6 +289,9 @@ function CreateEvent({
   const [opponent, setOpponent] = useState("");
   const [scoreFor, setScoreFor] = useState("");
   const [scoreAgainst, setScoreAgainst] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<"name" | "date" | "startTime" | "location" | "opponent" | "scoreFor" | "scoreAgainst" | "notes", string>>
+  >({});
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -292,12 +302,113 @@ function CreateEvent({
     if (eventDate > localISODate()) {
       setScoreFor("");
       setScoreAgainst("");
+      setFieldErrors((current) => {
+        if (!current.scoreFor && !current.scoreAgainst) return current;
+        const next = { ...current };
+        delete next.scoreFor;
+        delete next.scoreAgainst;
+        return next;
+      });
     }
   }, [eventDate]);
+
+  type AddFieldKey = "name" | "date" | "startTime" | "location" | "opponent" | "scoreFor" | "scoreAgainst" | "notes";
+
+  function validateAddField(
+    field: AddFieldKey,
+    overrides?: Partial<{
+      name: string;
+      type: EventType;
+      eventDate: string;
+      startTime: string;
+      location: string;
+      opponent: string;
+      scoreFor: string;
+      scoreAgainst: string;
+      notes: string;
+    }>,
+  ): string | null {
+    const nextName = overrides?.name ?? name;
+    const nextType = overrides?.type ?? type;
+    const nextDate = overrides?.eventDate ?? eventDate;
+    const nextTime = overrides?.startTime ?? startTime;
+    const nextLocation = overrides?.location ?? location;
+    const nextOpponent = overrides?.opponent ?? opponent;
+    const nextScoreFor = overrides?.scoreFor ?? scoreFor;
+    const nextScoreAgainst = overrides?.scoreAgainst ?? scoreAgainst;
+    const nextNotes = overrides?.notes ?? notes;
+    const scoresClosed = nextType === "match" && nextDate > localISODate();
+
+    switch (field) {
+      case "name":
+        return validateWithSchema(eventWriteSchema.shape.name, nextName);
+      case "date":
+        return validateDateInput(nextDate, true, "Date is required.");
+      case "startTime":
+        return validateTimeInput(nextTime, true, "Time is required.");
+      case "location":
+        return validateWithSchema(eventWriteSchema.shape.location, nextLocation);
+      case "opponent":
+        if (nextType === "match" && !nextOpponent.trim()) return "Opponent is required.";
+        if (nextType !== "match" && nextType !== "friendly") return null;
+        return nextOpponent.trim().length > 120 ? "Opponent is too long." : null;
+      case "scoreFor":
+        if (nextType !== "match" || scoresClosed) return null;
+        return validateIntInput(nextScoreFor, {
+          min: 0,
+          max: 99,
+          rangeMessage: "Score must be from 0 to 99.",
+          intMessage: "Score must be a whole number.",
+        });
+      case "scoreAgainst":
+        if (nextType !== "match" || scoresClosed) return null;
+        return validateIntInput(nextScoreAgainst, {
+          min: 0,
+          max: 99,
+          rangeMessage: "Score must be from 0 to 99.",
+          intMessage: "Score must be a whole number.",
+        });
+      case "notes":
+        return validateWithSchema(eventWriteSchema.shape.notes, nextNotes);
+    }
+  }
+
+  function updateAddFieldError(field: AddFieldKey, message: string | null) {
+    setFieldErrors((current) => {
+      if (!message) {
+        if (!current[field]) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      }
+      return { ...current, [field]: message };
+    });
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!session.token || !session.clubId) return;
+    const nextErrors: Partial<Record<AddFieldKey, string>> = {};
+    const keys: AddFieldKey[] = [
+      "name",
+      "date",
+      "startTime",
+      "location",
+      "opponent",
+      "scoreFor",
+      "scoreAgainst",
+      "notes",
+    ];
+    for (const key of keys) {
+      const msg = validateAddField(key);
+      if (msg) nextErrors[key] = msg;
+    }
+    const scoresClosed = type === "match" && eventDate > localISODate();
+    if (type === "match" && !scoresClosed && (scoreFor.trim() === "") !== (scoreAgainst.trim() === "")) {
+      if (scoreFor.trim() === "" && !nextErrors.scoreFor) nextErrors.scoreFor = "Enter both scores.";
+      if (scoreAgainst.trim() === "" && !nextErrors.scoreAgainst) nextErrors.scoreAgainst = "Enter both scores.";
+    }
+    setFieldErrors(nextErrors);
     if (!name.trim()) {
       onError("Event name is required.");
       return;
@@ -318,7 +429,6 @@ function CreateEvent({
       onError("Opponent is required.");
       return;
     }
-    const scoresClosed = type === "match" && eventDate > localISODate();
     if (type === "match" && !scoresClosed && (scoreFor.trim() === "") !== (scoreAgainst.trim() === "")) {
       onError("Enter both scores.");
       return;
@@ -342,10 +452,12 @@ function CreateEvent({
     try {
       await api.createEvent(session.token, session.clubId, parsed.data);
       setName("");
+      setLocation("");
       setNotes("");
       setOpponent("");
       setScoreFor("");
       setScoreAgainst("");
+      setFieldErrors({});
       await onCreated(parsed.data.date);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Could not add the session.");
@@ -356,21 +468,55 @@ function CreateEvent({
 
   return (
     <Form className="form-grid" onSubmit={onSubmit}>
-      <TextField className="wide" name="name" value={name} onChange={setName}>
+      <TextField
+        className="wide"
+        name="name"
+        isInvalid={Boolean(fieldErrors.name)}
+        value={name}
+        onChange={(value) => {
+          setName(value);
+          if (fieldErrors.name) updateAddFieldError("name", validateAddField("name", { name: value }));
+        }}
+        onBlur={() => updateAddFieldError("name", validateAddField("name"))}
+      >
         <Label>Event Name</Label>
         <Input />
+        <FieldError>{fieldErrors.name}</FieldError>
       </TextField>
       <div className="field">
         <span>Type</span>
-        <ChoiceMenu label="Type" value={type} options={typeOptions} onChange={(value) => setType(value as EventType)} />
+        <ChoiceMenu
+          label="Type"
+          value={type}
+          options={typeOptions}
+          onChange={(value) => {
+            const nextType = value as EventType;
+            setType(nextType);
+            setFieldErrors((current) => {
+              const next = { ...current };
+              if (nextType !== "match" && nextType !== "friendly") delete next.opponent;
+              if (nextType !== "match") {
+                delete next.scoreFor;
+                delete next.scoreAgainst;
+              }
+              return next;
+            });
+          }}
+        />
       </div>
       <div className="field-pair wide">
         <DatePicker
           className="event-when"
           granularity="day"
+          isInvalid={Boolean(fieldErrors.date)}
           name="date"
           value={eventDate ? parseDate(eventDate) : null}
-          onChange={(value) => setEventDate(value ? value.toString() : "")}
+          onChange={(value) => {
+            const nextDate = value ? value.toString() : "";
+            setEventDate(nextDate);
+            if (fieldErrors.date) updateAddFieldError("date", validateAddField("date", { eventDate: nextDate }));
+          }}
+          onBlur={() => updateAddFieldError("date", validateAddField("date"))}
         >
           <Label>Date</Label>
           <DateField.Group fullWidth>
@@ -381,6 +527,7 @@ function CreateEvent({
               </DatePicker.Trigger>
             </DateField.Suffix>
           </DateField.Group>
+          <FieldError>{fieldErrors.date}</FieldError>
           <DatePicker.Popover>
             <Calendar aria-label="Event date">
               <Calendar.Header>
@@ -407,9 +554,17 @@ function CreateEvent({
           className="event-when"
           granularity="minute"
           hourCycle={24}
+          isInvalid={Boolean(fieldErrors.startTime)}
           name="startTime"
           value={timeValue(startTime)}
-          onChange={(value) => setStartTime(value ? value.toString().slice(0, 5) : "")}
+          onChange={(value) => {
+            const nextTime = value ? value.toString().slice(0, 5) : "";
+            setStartTime(nextTime);
+            if (fieldErrors.startTime) {
+              updateAddFieldError("startTime", validateAddField("startTime", { startTime: nextTime }));
+            }
+          }}
+          onBlur={() => updateAddFieldError("startTime", validateAddField("startTime"))}
         >
           <Label>Time</Label>
           <TimeField.Group fullWidth>
@@ -418,16 +573,39 @@ function CreateEvent({
               <Icon data={Clock} size={16} />
             </TimeField.Suffix>
           </TimeField.Group>
+          <FieldError>{fieldErrors.startTime}</FieldError>
         </TimeField>
       </div>
-      <TextField className="wide" name="location" value={location} onChange={setLocation}>
+      <TextField
+        className="wide"
+        name="location"
+        isInvalid={Boolean(fieldErrors.location)}
+        value={location}
+        onChange={(value) => {
+          setLocation(value);
+          if (fieldErrors.location) updateAddFieldError("location", validateAddField("location", { location: value }));
+        }}
+        onBlur={() => updateAddFieldError("location", validateAddField("location"))}
+      >
         <Label>Location</Label>
         <Input />
+        <FieldError>{fieldErrors.location}</FieldError>
       </TextField>
       {type === "match" || type === "friendly" ? (
-        <TextField className="wide" name="opponent" value={opponent} onChange={setOpponent}>
+        <TextField
+          className="wide"
+          name="opponent"
+          isInvalid={Boolean(fieldErrors.opponent)}
+          value={opponent}
+          onChange={(value) => {
+            setOpponent(value);
+            if (fieldErrors.opponent) updateAddFieldError("opponent", validateAddField("opponent", { opponent: value }));
+          }}
+          onBlur={() => updateAddFieldError("opponent", validateAddField("opponent"))}
+        >
           <Label>Opponent</Label>
           <Input />
+          <FieldError>{fieldErrors.opponent}</FieldError>
         </TextField>
       ) : null}
       {type === "match" ? (
@@ -435,28 +613,53 @@ function CreateEvent({
           <TextField
             name="scoreFor"
             type="number"
+            isInvalid={Boolean(fieldErrors.scoreFor)}
             value={scoreFor}
             isDisabled={eventDate > localISODate()}
-            onChange={setScoreFor}
+            onChange={(value) => {
+              setScoreFor(value);
+              if (fieldErrors.scoreFor) updateAddFieldError("scoreFor", validateAddField("scoreFor", { scoreFor: value }));
+            }}
+            onBlur={() => updateAddFieldError("scoreFor", validateAddField("scoreFor"))}
           >
             <Label>Our score</Label>
             <Input min={0} />
+            <FieldError>{fieldErrors.scoreFor}</FieldError>
           </TextField>
           <TextField
             name="scoreAgainst"
             type="number"
+            isInvalid={Boolean(fieldErrors.scoreAgainst)}
             value={scoreAgainst}
             isDisabled={eventDate > localISODate()}
-            onChange={setScoreAgainst}
+            onChange={(value) => {
+              setScoreAgainst(value);
+              if (fieldErrors.scoreAgainst) {
+                updateAddFieldError("scoreAgainst", validateAddField("scoreAgainst", { scoreAgainst: value }));
+              }
+            }}
+            onBlur={() => updateAddFieldError("scoreAgainst", validateAddField("scoreAgainst"))}
           >
             <Label>Their score</Label>
             <Input min={0} />
+            <FieldError>{fieldErrors.scoreAgainst}</FieldError>
           </TextField>
         </>
       ) : null}
-      <TextField className="wide" name="notes" value={notes} onChange={setNotes}>
+      <TextField
+        className="wide"
+        name="notes"
+        isInvalid={Boolean(fieldErrors.notes)}
+        value={notes}
+        onChange={(value) => {
+          setNotes(value);
+          if (fieldErrors.notes) updateAddFieldError("notes", validateAddField("notes", { notes: value }));
+        }}
+        onBlur={() => updateAddFieldError("notes", validateAddField("notes"))}
+      >
         <Label>Notes</Label>
         <TextArea />
+        <FieldError>{fieldErrors.notes}</FieldError>
       </TextField>
       <div className="wide">
         <Button type="submit" variant="primary" isDisabled={pending}>
@@ -483,6 +686,9 @@ function DayEvent({
   const [location, setLocation] = useState(event.location);
   const [notes, setNotes] = useState(event.notes);
   const [opponent, setOpponent] = useState(event.opponent ?? "");
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<"name" | "startTime" | "location" | "opponent" | "notes", string>>
+  >({});
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -491,11 +697,58 @@ function DayEvent({
     setLocation(event.location);
     setNotes(event.notes);
     setOpponent(event.opponent ?? "");
+    setFieldErrors({});
   }, [event]);
+
+  type EditFieldKey = "name" | "startTime" | "location" | "opponent" | "notes";
+
+  function validateEditField(
+    field: EditFieldKey,
+    overrides?: Partial<{ name: string; startTime: string; location: string; opponent: string; notes: string }>,
+  ): string | null {
+    const nextName = overrides?.name ?? name;
+    const nextTime = overrides?.startTime ?? startTime;
+    const nextLocation = overrides?.location ?? location;
+    const nextOpponent = overrides?.opponent ?? opponent;
+    const nextNotes = overrides?.notes ?? notes;
+
+    switch (field) {
+      case "name":
+        return validateWithSchema(eventWriteSchema.shape.name, nextName);
+      case "startTime":
+        return validateTimeInput(nextTime, true, "Time is required.");
+      case "location":
+        return validateWithSchema(eventWriteSchema.shape.location, nextLocation);
+      case "opponent":
+        if (event.type === "match" && !nextOpponent.trim()) return "Opponent is required.";
+        if (event.type !== "match" && event.type !== "friendly") return null;
+        return nextOpponent.trim().length > 120 ? "Opponent is too long." : null;
+      case "notes":
+        return validateWithSchema(eventWriteSchema.shape.notes, nextNotes);
+    }
+  }
+
+  function updateEditFieldError(field: EditFieldKey, message: string | null) {
+    setFieldErrors((current) => {
+      if (!message) {
+        if (!current[field]) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      }
+      return { ...current, [field]: message };
+    });
+  }
 
   async function onSubmit(formEvent: React.FormEvent) {
     formEvent.preventDefault();
     if (!session.token || !session.clubId) return;
+    const nextErrors: Partial<Record<EditFieldKey, string>> = {};
+    for (const key of ["name", "startTime", "location", "opponent", "notes"] as EditFieldKey[]) {
+      const msg = validateEditField(key);
+      if (msg) nextErrors[key] = msg;
+    }
+    setFieldErrors(nextErrors);
     if (!name.trim()) {
       onError("Event name is required.");
       return;
@@ -562,7 +815,13 @@ function DayEvent({
           <Icon data={Pencil} size={16} />
         </Button>
       </div>
-      <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>
+      <Modal.Backdrop
+        isOpen={open}
+        onOpenChange={(isOpen) => {
+          setOpen(isOpen);
+          if (isOpen) setFieldErrors({});
+        }}
+      >
         <Modal.Container>
           <Modal.Dialog>
             <Modal.CloseTrigger />
@@ -571,27 +830,89 @@ function DayEvent({
             </Modal.Header>
             <Modal.Body>
               <Form className="form-grid" onSubmit={onSubmit}>
-                <TextField className="wide" name="name" value={name} onChange={setName}>
+                <TextField
+                  className="wide"
+                  name="name"
+                  isInvalid={Boolean(fieldErrors.name)}
+                  value={name}
+                  onChange={(value) => {
+                    setName(value);
+                    if (fieldErrors.name) updateEditFieldError("name", validateEditField("name", { name: value }));
+                  }}
+                  onBlur={() => updateEditFieldError("name", validateEditField("name"))}
+                >
                   <Label>Event Name</Label>
                   <Input />
+                  <FieldError>{fieldErrors.name}</FieldError>
                 </TextField>
-                <TextField className="wide" name="startTime" type="time" value={startTime} onChange={setStartTime}>
+                <TextField
+                  className="wide"
+                  name="startTime"
+                  type="time"
+                  isInvalid={Boolean(fieldErrors.startTime)}
+                  value={startTime}
+                  onChange={(value) => {
+                    setStartTime(value);
+                    if (fieldErrors.startTime) {
+                      updateEditFieldError("startTime", validateEditField("startTime", { startTime: value }));
+                    }
+                  }}
+                  onBlur={() => updateEditFieldError("startTime", validateEditField("startTime"))}
+                >
                   <Label>Time</Label>
                   <Input />
+                  <FieldError>{fieldErrors.startTime}</FieldError>
                 </TextField>
-                <TextField className="wide" name="location" value={location} onChange={setLocation}>
+                <TextField
+                  className="wide"
+                  name="location"
+                  isInvalid={Boolean(fieldErrors.location)}
+                  value={location}
+                  onChange={(value) => {
+                    setLocation(value);
+                    if (fieldErrors.location) {
+                      updateEditFieldError("location", validateEditField("location", { location: value }));
+                    }
+                  }}
+                  onBlur={() => updateEditFieldError("location", validateEditField("location"))}
+                >
                   <Label>Location</Label>
                   <Input />
+                  <FieldError>{fieldErrors.location}</FieldError>
                 </TextField>
                 {withOpponent ? (
-                  <TextField className="wide" name="opponent" value={opponent} onChange={setOpponent}>
+                  <TextField
+                    className="wide"
+                    name="opponent"
+                    isInvalid={Boolean(fieldErrors.opponent)}
+                    value={opponent}
+                    onChange={(value) => {
+                      setOpponent(value);
+                      if (fieldErrors.opponent) {
+                        updateEditFieldError("opponent", validateEditField("opponent", { opponent: value }));
+                      }
+                    }}
+                    onBlur={() => updateEditFieldError("opponent", validateEditField("opponent"))}
+                  >
                     <Label>Opponent</Label>
                     <Input />
+                    <FieldError>{fieldErrors.opponent}</FieldError>
                   </TextField>
                 ) : null}
-                <TextField className="wide" name="notes" value={notes} onChange={setNotes}>
+                <TextField
+                  className="wide"
+                  name="notes"
+                  isInvalid={Boolean(fieldErrors.notes)}
+                  value={notes}
+                  onChange={(value) => {
+                    setNotes(value);
+                    if (fieldErrors.notes) updateEditFieldError("notes", validateEditField("notes", { notes: value }));
+                  }}
+                  onBlur={() => updateEditFieldError("notes", validateEditField("notes"))}
+                >
                   <Label>Notes</Label>
                   <TextArea />
+                  <FieldError>{fieldErrors.notes}</FieldError>
                 </TextField>
                 <div className="wide">
                   <Button type="submit" variant="primary" isDisabled={pending}>
