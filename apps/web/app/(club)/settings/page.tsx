@@ -205,7 +205,6 @@ export default function SettingsPage() {
         </div>
         <NotificationCentre />
       </div>
-      <ThemeCard />
       <Form className="card stack" onSubmit={onSubmit}>
         <div className="field" data-invalid={fieldErrors.logo ? "true" : undefined}>
           <Label>Club logo</Label>
@@ -316,6 +315,7 @@ export default function SettingsPage() {
           </Button>
         </div>
       </Form>
+      <ThemeCard />
     </>
   );
 }

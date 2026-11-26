@@ -71,6 +71,52 @@ p { margin: 0; }
 .auth-card { width: min(480px, 100%); display: grid; gap: 16px; }
 .auth-card h1 { font-size: 32px; letter-spacing: -0.04em; }
 
+.register-surface {
+  width: min(880px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 28px;
+  background: var(--canvas);
+}
+.register-crumbs { align-self: center; display: flex; justify-content: center; }
+.register-crumb-current .breadcrumbs__link {
+  color: var(--ink);
+  font-weight: 600;
+  opacity: 1;
+}
+.register-surface .breadcrumbs__link[data-disabled="true"],
+.register-surface .breadcrumbs__link[aria-disabled="true"] {
+  opacity: 0.4;
+  pointer-events: none;
+  text-decoration: none;
+}
+.register-columns {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 32px;
+}
+.register-intro { flex: 1 1 200px; max-width: 240px; display: grid; gap: 8px; }
+.register-intro h1 { font-size: 32px; letter-spacing: -0.04em; }
+.register-form {
+  flex: 1 1 360px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+}
+.register-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.register-pending { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.register-summary { display: grid; gap: 12px; margin: 0; }
+.register-summary div { display: grid; gap: 2px; }
+.register-summary dt { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+.register-summary dd { margin: 0; }
+.register-complete { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
 .field { display: grid; gap: 6px; }
 .field span, .eyebrow {
   font-size: 12px;
@@ -617,4 +663,7 @@ html.dark .chip-leisure { background: #3b2a66; color: #c4b5fd; }
   h1 { font-size: 32px; }
   .form-grid, .stats, .dash-grid { grid-template-columns: 1fr; }
   .auth-card, .card, .panel { padding: 16px; }
+  .register-surface { padding: 16px; }
+  .register-columns { flex-direction: column; }
+  .register-intro { max-width: none; }
 }

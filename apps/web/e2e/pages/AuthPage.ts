@@ -26,27 +26,20 @@ export class AuthPage {
     goals?: string;
   }) {
     await this.page.getByLabel("Your name").fill(input.name);
-    await this.page.getByRole("button", { name: "Next", exact: true }).click();
-
     await this.page.getByLabel("Email").fill(input.email);
-    await this.page.getByRole("button", { name: "Next", exact: true }).click();
-
     await this.page.getByLabel("Password").fill(input.password);
     await this.page.getByRole("button", { name: "Next", exact: true }).click();
 
     await this.page.getByLabel("Club name").fill(input.clubName);
-    await this.page.getByRole("button", { name: "Next", exact: true }).click();
-
     if (input.description) {
       await this.page.getByLabel("Description").fill(input.description);
     }
-    await this.page.getByRole("button", { name: "Next", exact: true }).click();
-
     if (input.goals) {
       await this.page.getByLabel("Goals").fill(input.goals);
     }
     await this.page.getByRole("button", { name: "Next", exact: true }).click();
 
     await this.page.getByRole("button", { name: "Create club" }).click();
+    await this.page.getByRole("link", { name: "Start managing your club" }).click();
   }
 }

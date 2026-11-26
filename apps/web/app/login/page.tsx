@@ -86,7 +86,6 @@ export default function LoginPage() {
           <p className="eyebrow">MYCLUB</p>
           <h1>Sign in</h1>
         </div>
-        <p className="muted">Managers run the club on the web. Players reply to training and matches.</p>
         <TextField
           name="email"
           type="email"
@@ -121,7 +120,7 @@ export default function LoginPage() {
           {pending ? "Signing in…" : "Sign in"}
         </Button>
         <p className="muted">
-          New club? <Link href="/register">Create one</Link>
+          No club yet? <Link href="/register">Create one</Link>
         </p>
       </Form>
     </main>

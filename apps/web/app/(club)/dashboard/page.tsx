@@ -53,7 +53,7 @@ export default function DashboardPage() {
     <div className="dash">
       <div className="page-heading">
         <div className="page-title">
-          <h1>Dashboard</h1>
+          <h1>Welcome back, {session.user?.name}!</h1>
         </div>
         <div className="page-actions">
           <NotificationCentre />
@@ -134,17 +134,6 @@ export default function DashboardPage() {
                     </li>
                   ))}
                 </ul>
-              </Card.Content>
-            </Card>
-            <Card>
-              <Card.Header>
-                <Card.Title>Win/loss ratio</Card.Title>
-              </Card.Header>
-              <Card.Content>
-                <WinLossChart
-                  wins={data?.wins ?? 0}
-                  losses={data?.losses ?? 0}
-                />
               </Card.Content>
             </Card>
           </div>

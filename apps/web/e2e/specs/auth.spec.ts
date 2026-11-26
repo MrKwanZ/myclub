@@ -22,7 +22,7 @@ test.describe("Public landing, registration, login, and sign out", () => {
     await expect(page.getByRole("heading", { name: /Privacy/i })).toBeVisible();
   });
 
-  test("7-step manager registration creates club and lands on dashboard", async ({ page }) => {
+  test("manager registration creates a club and opens the dashboard", async ({ page }) => {
     const auth = new AuthPage(page);
     const email = uniqueEmail("reg");
     const clubName = `Reg FC ${Date.now().toString().slice(-4)}`;
@@ -38,7 +38,7 @@ test.describe("Public landing, registration, login, and sign out", () => {
     });
 
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
   });
 
   test("invalid login shows error; valid manager and player logins route to role home and sign out clears storage", async ({
