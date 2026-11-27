@@ -2,19 +2,21 @@
 
 import { ChoiceMenu } from "@/components/ChoiceMenu";
 import { PlayerStatusMenu } from "@/components/PlayerStatusMenu";
+import { api } from "@/lib/api";
 import { notifySignedOut, notifySignOutFailed } from "@/lib/notify";
 import { useSession } from "@/lib/session";
+import { managesClub, roleLabel, userInitials } from "@myclub/shared";
 import {
   ArrowRightFromSquare,
   Calendar,
   ChartColumnStacked,
   CircleDollar,
-  Gear,
   House,
   Person,
+  ShieldKeyhole,
 } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
-import { Button } from "@heroui/react";
+import { Avatar, Button, Description, Label } from "@heroui/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -36,8 +38,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const playerPath = pathname.startsWith("/play");
+  const adminPath = pathname === "/admin" || pathname.startsWith("/admin/");
+  const manages = managesClub(session.role);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutHovered, setSignOutHovered] = useState(false);
+  const [adminLogoUrl, setAdminLogoUrl] = useState("");
 
   async function onSignOut() {
     if (signingOut) return;
@@ -55,15 +60,42 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    if (!session.isAdmin || !session.token || !session.clubId) {
+      setAdminLogoUrl("");
+      return;
+    }
+    const token = session.token;
+    const clubId = session.clubId;
+    let cancelled = false;
+    api
+      .club(token, clubId)
+      .then((result) => {
+        if (!cancelled) setAdminLogoUrl(result.club.logoUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setAdminLogoUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session.isAdmin, session.token, session.clubId]);
+
+  useEffect(() => {
     if (session.status === "loading") return;
     if (session.status === "anon") {
       router.replace("/login");
       return;
     }
-    if (!session.role) return;
-    if (session.role === "player" && !playerPath) router.replace("/play");
-    if (session.role === "manager" && playerPath) router.replace("/dashboard");
-  }, [session.status, session.role, playerPath, router]);
+    if (session.role === "player" && !playerPath) {
+      router.replace("/play");
+      return;
+    }
+    if (manages && playerPath) {
+      router.replace("/dashboard");
+      return;
+    }
+    if (adminPath && !session.isAdmin) router.replace(session.role === "player" ? "/play" : "/dashboard");
+  }, [session.status, session.role, session.isAdmin, playerPath, adminPath, manages, router]);
 
   if (session.status !== "in") {
     return (
@@ -74,7 +106,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }
 
   const mismatch =
-    (session.role === "player" && !playerPath) || (session.role === "manager" && playerPath);
+    (session.role === "player" && !playerPath) ||
+    (manages && playerPath) ||
+    (adminPath && !session.isAdmin);
   if (mismatch) {
     return (
       <main className="auth-wrap">
@@ -83,28 +117,35 @@ export function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const membership = session.user?.memberships.find((item) => item.clubId === session.clubId);
+  const clubs = session.user
+    ? session.isAdmin
+      ? session.user.clubs
+      : session.user.memberships.map((item) => item.club)
+    : [];
+  const currentClub = clubs.find((club) => club.id === session.clubId);
+  const logoUrl = session.isAdmin ? adminLogoUrl : currentClub?.logoUrl;
+  const showClubMenu = session.isAdmin ? clubs.length > 0 : clubs.length > 1;
   const links = session.role === "player" ? playerLinks : managerLinks;
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          {membership?.club.logoUrl ? (
-            <img className="club-logo" src={membership.club.logoUrl} alt={`${membership.club.name} logo`} />
+          {logoUrl ? (
+            <img className="club-logo" src={logoUrl} alt={`${currentClub?.name ?? "Club"} logo`} />
           ) : (
             <span className="club-logo club-logo-empty">Logo</span>
           )}
         </div>
-        {session.user && session.user.memberships.length > 1 ? (
+        {showClubMenu ? (
           <div className="field club-switch" data-testid="club-switcher">
             <span>Club</span>
             <ChoiceMenu
               label="Club"
               value={session.clubId ?? ""}
-              options={session.user.memberships.map((item) => ({
-                id: item.clubId,
-                label: item.club.name,
+              options={clubs.map((club) => ({
+                id: club.id,
+                label: club.name,
               }))}
               onChange={session.setClubId}
             />
@@ -126,26 +167,46 @@ export function Shell({ children }: { children: React.ReactNode }) {
             : null}
         </nav>
         <div className="spacer" />
-        {session.role === "manager" ? (
+        <nav className="nav" aria-label="Account">
+          {manages && session.user ? (
+            <Button
+              className={pathname === "/account" ? "account-link nav-current" : "account-link"}
+              data-testid="account-link"
+              variant="ghost"
+              onPress={() => router.push("/account")}
+            >
+              <Avatar size="sm">
+                {session.user.avatarUrl ? <Avatar.Image alt="" src={session.user.avatarUrl} /> : null}
+                <Avatar.Fallback>{userInitials(session.user.name)}</Avatar.Fallback>
+              </Avatar>
+              <span className="account-link-copy">
+                <Label>{session.user.name}</Label>
+                <Description>{roleLabel(session.role ?? "")}</Description>
+              </span>
+            </Button>
+          ) : null}
+          {session.isAdmin ? (
+            <Button
+              className={pathname === "/admin" ? "nav-current" : undefined}
+              data-testid="admin-panel-link"
+              variant="ghost"
+              onPress={() => router.push("/admin")}
+            >
+              <Icon data={ShieldKeyhole} size={16} />
+              Admin Panel
+            </Button>
+          ) : null}
           <Button
-            className={pathname === "/settings" ? "nav-current" : undefined}
-            variant="ghost"
-            onPress={() => router.push("/settings")}
+            className="sign-out"
+            variant={signOutHovered ? "danger-soft" : "ghost"}
+            onMouseEnter={() => setSignOutHovered(true)}
+            onMouseLeave={() => setSignOutHovered(false)}
+            onPress={() => void onSignOut()}
           >
-            <Icon data={Gear} size={16} />
-            Settings
+            <Icon data={ArrowRightFromSquare} size={16} />
+            {signingOut ? "Signing out…" : "Sign Out"}
           </Button>
-        ) : null}
-        <Button
-          className="sign-out"
-          variant={signOutHovered ? "danger-soft" : "ghost"}
-          onMouseEnter={() => setSignOutHovered(true)}
-          onMouseLeave={() => setSignOutHovered(false)}
-          onPress={() => void onSignOut()}
-        >
-          <Icon data={ArrowRightFromSquare} size={16} />
-          {signingOut ? "Signing out…" : "Sign Out"}
-        </Button>
+        </nav>
       </aside>
       <main className="main" key={session.clubId ?? "none"}>
         {children}

@@ -10,8 +10,9 @@ test.describe("Player Flows (/play, /play/calendar, /play/attendance)", () => {
       await page.goto("/play");
       await expect(page.getByText("Evening Tactical Session")).toBeVisible();
 
-      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-      await expect(page.getByText("Pending Reply").first()).toBeVisible();
+      await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Sam Striker/ })).toBeVisible();
+      await expect(page.getByText("Pending Reply")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "RSVP" }).first()).toBeVisible();
 
       // Reply Yes -> present. Unanswered events start on RSVP.
       await page.getByRole("button", { name: "RSVP" }).first().click();

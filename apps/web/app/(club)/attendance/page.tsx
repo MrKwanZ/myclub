@@ -11,6 +11,7 @@ import {
   attendanceStatuses,
   formatEventWhen,
   localISODate,
+  managesClub,
   recorderLabel,
   type AttendanceRow,
   type AttendanceStatus,
@@ -33,7 +34,7 @@ export default function AttendancePage() {
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (session.status !== "in" || !session.token || !session.clubId || session.role !== "manager") return;
+    if (session.status !== "in" || !session.token || !session.clubId || !managesClub(session.role)) return;
     const token = session.token;
     const clubId = session.clubId;
     let cancelled = false;
@@ -55,7 +56,7 @@ export default function AttendancePage() {
   }, [session.status, session.token, session.clubId, session.role]);
 
   useEffect(() => {
-    if (session.status !== "in" || !session.token || !session.clubId || !eventId || session.role !== "manager") return;
+    if (session.status !== "in" || !session.token || !session.clubId || !eventId || !managesClub(session.role)) return;
     const token = session.token;
     const clubId = session.clubId;
     let cancelled = false;

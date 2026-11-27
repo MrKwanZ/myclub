@@ -46,4 +46,20 @@ test.describe("Manager Finance", () => {
     await expect(page.getByText("Pitch Rental")).toHaveCount(0);
     await expect(page.getByTestId("balance-value")).toContainText("1000.00");
   });
+
+  test("hides the balance chart when the club has no transactions", async ({ page, api }) => {
+    const mgr = await api.bootstrapManagerClub("finempty");
+    await page.addInitScript(
+      ([tKey, cKey, tVal, cVal]) => {
+        localStorage.setItem(tKey, tVal);
+        localStorage.setItem(cKey, cVal);
+      },
+      [TOKEN_KEY, CLUB_KEY, mgr.token, mgr.clubId],
+    );
+
+    await page.goto("/finance");
+    await expect(page.getByText("No transactions yet.")).toBeVisible();
+    await expect(page.getByTestId("balance-chart")).toHaveCount(0);
+    await expect(page.getByTestId("balance-value")).toBeVisible();
+  });
 });

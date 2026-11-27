@@ -16,6 +16,7 @@ import { useSession } from "@/lib/session";
 import { usePagedRows } from "@/lib/usePagedRows";
 import {
   localISODate,
+  managesClub,
   transactionTypes,
   transactionWriteSchema,
   type Transaction,
@@ -111,7 +112,7 @@ export default function FinancePage() {
   }, [session.token, session.clubId]);
 
   useEffect(() => {
-    if (session.status !== "in" || session.role !== "manager") return;
+    if (session.status !== "in" || !managesClub(session.role)) return;
     let cancelled = false;
     load().catch((err: unknown) => {
       if (!cancelled) setError(err instanceof Error ? err.message : "Could not load finance.");
@@ -254,24 +255,26 @@ export default function FinancePage() {
           <span className="eyebrow">BALANCE</span>
           <b data-testid="balance-value">{balance ?? "–"}</b>
         </div>
-        <div className="balance-chart" data-testid="balance-chart">
-          <Doughnut
-            data={{
-              labels: ["Income", "Expense"],
-              datasets: [
-                {
-                  data: [flow.income, flow.expense],
-                  backgroundColor: ["#1aae39", "#dd5b00"],
-                  borderWidth: 0,
-                },
-              ],
-            }}
-            options={{
-              plugins: { legend: { position: "bottom" } },
-              maintainAspectRatio: false,
-            }}
-          />
-        </div>
+        {rows.length > 0 ? (
+          <div className="balance-chart" data-testid="balance-chart">
+            <Doughnut
+              data={{
+                labels: ["Income", "Expense"],
+                datasets: [
+                  {
+                    data: [flow.income, flow.expense],
+                    backgroundColor: ["#1aae39", "#dd5b00"],
+                    borderWidth: 0,
+                  },
+                ],
+              }}
+              options={{
+                plugins: { legend: { position: "bottom" } },
+                maintainAspectRatio: false,
+              }}
+            />
+          </div>
+        ) : null}
       </article>
       {error && !editor ? <p className="muted">{error}</p> : null}
       {page.loading && page.rows.length === 0 ? (

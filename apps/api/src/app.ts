@@ -1,6 +1,12 @@
 import {
+  adminClubPatchSchema,
+  adminUserPatchSchema,
+  type AdminUserRow,
   announcementReadSchema,
   announcementWriteSchema,
+  compareClubName,
+  managesClub,
+  clubImportSchema,
   clubPatchSchema,
   clubWriteSchema,
   eventPatchSchema,
@@ -8,6 +14,8 @@ import {
   eventWriteSchema,
   lineupWriteSchema,
   localISODate,
+  attendanceAlertMessage,
+  attendancePercentage,
   loginSchema,
   managerAttendanceSchema,
   notificationWindowDays,
@@ -21,8 +29,11 @@ import {
   playerPatchSchema,
   playerRsvpSchema,
   playerStatusReportSchema,
+  passwordChangeSchema,
   playerWriteSchema,
+  profilePatchSchema,
   registerSchema,
+  shouldWarnAttendance,
   statusNoticeReadSchema,
   transactionWriteSchema,
   type PlayerStatus,
@@ -73,6 +84,12 @@ async function authenticate(c: Context) {
 }
 
 async function requireClub(userId: string, clubId: string) {
+  const admin = await prisma.membership.findFirst({ where: { userId, role: "admin" } });
+  if (admin) {
+    const club = await prisma.club.findUnique({ where: { id: clubId }, select: { id: true } });
+    if (!club) throw new HttpError(404, "Club not found.");
+    return { ...admin, clubId, role: "admin" };
+  }
   const membership = await prisma.membership.findUnique({
     where: { userId_clubId: { userId, clubId } },
   });
@@ -84,7 +101,13 @@ async function requireClub(userId: string, clubId: string) {
 }
 
 function assertManager(role: string) {
-  if (role !== "manager") throw new HttpError(403, "Only a manager can do that.");
+  if (!managesClub(role)) throw new HttpError(403, "Only a manager can do that.");
+}
+
+async function requireAdmin(userId: string) {
+  const membership = await prisma.membership.findFirst({ where: { userId, role: "admin" } });
+  if (!membership) throw new HttpError(403, "Only an administrator can do that.");
+  return membership;
 }
 
 function clubDto(club: {
@@ -94,6 +117,8 @@ function clubDto(club: {
   goals: string;
   logoUrl: string;
   jerseys?: string[];
+  attendanceAlertEnabled: boolean;
+  attendanceAlertPercent: number | null;
 }) {
   return {
     id: club.id,
@@ -102,6 +127,8 @@ function clubDto(club: {
     goals: club.goals,
     logoUrl: club.logoUrl,
     jerseys: club.jerseys ?? [],
+    attendanceAlertEnabled: club.attendanceAlertEnabled,
+    attendanceAlertPercent: club.attendanceAlertPercent,
   };
 }
 
@@ -112,13 +139,24 @@ async function publicUser(userId: string) {
       id: true,
       email: true,
       name: true,
+      avatarUrl: true,
+      contact: true,
       memberships: {
         orderBy: { createdAt: "asc" },
         select: { clubId: true, role: true, club: { select: { id: true, name: true, logoUrl: true } } },
       },
     },
   });
-  return user;
+  const isAdmin = user.memberships.some((membership) => membership.role === "admin");
+  const clubs = isAdmin
+    ? (
+        await prisma.club.findMany({
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        })
+      ).map((club) => ({ ...club, logoUrl: "" }))
+    : user.memberships.map((membership) => membership.club);
+  return { ...user, isAdmin, clubs };
 }
 
 function playerJson(player: {
@@ -239,12 +277,94 @@ app.post("/auth/login", async (c) => {
   if (!(await verifyPassword(body.password, user.passwordHash))) {
     throw new HttpError(401, "Incorrect password");
   }
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   return c.json({ token: signToken(user.id), user: await publicUser(user.id) });
 });
 
 app.get("/auth/me", async (c) => {
   const user = await authenticate(c);
   return c.json({ user: await publicUser(user.id) });
+});
+
+app.patch("/auth/me", async (c) => {
+  const user = await authenticate(c);
+  const body = parseBody(profilePatchSchema, await readJson(c));
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      name: body.name,
+      contact: body.contact,
+      ...(body.avatarUrl ? { avatarUrl: body.avatarUrl } : {}),
+    },
+  });
+  return c.json({ user: await publicUser(user.id) });
+});
+
+app.post("/auth/password", async (c) => {
+  const user = await authenticate(c);
+  const body = parseBody(passwordChangeSchema, await readJson(c));
+  if (!(await verifyPassword(body.currentPassword, user.passwordHash))) {
+    throw new HttpError(401, "Incorrect password");
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await hashPassword(body.newPassword) },
+  });
+  return c.json({ ok: true });
+});
+
+app.post("/auth/avatar", async (c) => {
+  const user = await authenticate(c);
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) throw new HttpError(400, "Choose an image.");
+  if (file.type !== "image/jpeg" && file.type !== "image/png") {
+    throw new HttpError(400, "Use a JPG or PNG image.");
+  }
+  if (file.size > 1_500_000) throw new HttpError(400, "Image must be 1.5 MB or smaller.");
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const avatarUrl = `data:${file.type};base64,${bytes.toString("base64")}`;
+  if (c.req.query("commit") === "0") return c.json({ avatarUrl });
+  await prisma.user.update({ where: { id: user.id }, data: { avatarUrl } });
+  return c.json({ user: await publicUser(user.id), avatarUrl });
+});
+
+app.get("/me/attendance-alerts", async (c) => {
+  const user = await authenticate(c);
+  const memberships = await prisma.membership.findMany({
+    where: { userId: user.id, role: "player" },
+    select: { clubId: true },
+  });
+  const alerts: { clubId: string; message: string }[] = [];
+  for (const membership of memberships) {
+    const club = await prisma.club.findUnique({
+      where: { id: membership.clubId },
+      select: { attendanceAlertEnabled: true, attendanceAlertPercent: true },
+    });
+    if (!club?.attendanceAlertEnabled || club.attendanceAlertPercent == null) continue;
+    const player = await prisma.player.findFirst({
+      where: { clubId: membership.clubId, userId: user.id },
+      select: { id: true },
+    });
+    if (!player) continue;
+    const [totalEvents, attended] = await Promise.all([
+      prisma.event.count({ where: { clubId: membership.clubId } }),
+      prisma.attendance.count({
+        where: {
+          clubId: membership.clubId,
+          playerId: player.id,
+          status: { in: ["present", "maybe"] },
+        },
+      }),
+    ]);
+    const rate = attendancePercentage(attended, totalEvents);
+    if (!shouldWarnAttendance(rate, club.attendanceAlertPercent, totalEvents)) continue;
+    alerts.push({
+      clubId: membership.clubId,
+      message: attendanceAlertMessage(rate, club.attendanceAlertPercent),
+    });
+  }
+  return c.json({ alerts });
 });
 
 app.get("/me/status-notices", async (c) => {
@@ -433,6 +553,93 @@ app.post("/clubs", async (c) => {
     },
     201,
   );
+});
+
+app.post("/clubs/:clubId/import", async (c) => {
+  const user = await authenticate(c);
+  const clubId = c.req.param("clubId");
+  const membership = await requireClub(user.id, clubId);
+  assertManager(membership.role);
+  const body = parseBody(clubImportSchema, await readJson(c));
+  const imported = await prisma.$transaction(async (tx) => {
+    const players = body.players ?? [];
+    const transactions = body.transactions ?? [];
+    const events = (body.events ?? []).map((event) => {
+      const normalized = normalizeEvent({
+        type: event.type,
+        opponent: event.opponent ?? null,
+        scoreFor: event.scoreFor ?? null,
+        scoreAgainst: event.scoreAgainst ?? null,
+        result: null,
+      });
+      return {
+        clubId,
+        type: normalized.type,
+        name: event.name,
+        date: utcDate(event.date),
+        startTime: event.startTime,
+        location: event.location,
+        notes: event.notes,
+        opponent: normalized.opponent,
+        scoreFor: normalized.scoreFor,
+        scoreAgainst: normalized.scoreAgainst,
+        result: normalized.result,
+      };
+    });
+
+    if (players.length > 0) {
+      await tx.player.createMany({
+        data: players.map((player) => ({
+          clubId,
+          name: player.name,
+          position: player.position,
+          shirtNumber: player.shirtNumber ?? null,
+          contact: player.contact,
+          status: player.status,
+          goals: player.goals,
+          assists: player.assists,
+          yellowCards: player.yellowCards,
+          redCards: player.redCards,
+          playedMinutes: player.playedMinutes,
+          saves: player.saves,
+        })),
+      });
+    }
+    if (events.length > 0) await tx.event.createMany({ data: events });
+    if (transactions.length > 0) {
+      await tx.transaction.createMany({
+        data: transactions.map((row) => ({
+          clubId,
+          type: row.type,
+          amount: row.amount.toFixed(2),
+          date: utcDate(row.date),
+          item: row.item,
+          notes: row.notes,
+        })),
+      });
+    }
+
+    const [activePlayers, clubEvents] = await Promise.all([
+      tx.player.findMany({
+        where: { clubId, status: { in: ["active", "injured"] } },
+        select: { id: true },
+      }),
+      tx.event.findMany({ where: { clubId }, select: { id: true } }),
+    ]);
+    const attendance = activePlayers.flatMap((player) =>
+      clubEvents.map((event) => ({
+        clubId,
+        playerId: player.id,
+        eventId: event.id,
+        status: "unanswered",
+      })),
+    );
+    for (let index = 0; index < attendance.length; index += 1000) {
+      await tx.attendance.createMany({ data: attendance.slice(index, index + 1000), skipDuplicates: true });
+    }
+    return { players: players.length, transactions: transactions.length, events: events.length };
+  });
+  return c.json({ imported }, 201);
 });
 
 app.get("/clubs/:clubId", async (c) => {
@@ -979,7 +1186,7 @@ app.get("/clubs/:clubId/events/:eventId/attendance", async (c) => {
     });
   }
 
-  if (membership.role !== "manager") throw new HttpError(403, "Only a manager can do that.");
+  if (!managesClub(membership.role)) throw new HttpError(403, "Only a manager can do that.");
 
   const rows = await prisma.attendance.findMany({
     where: { eventId: event.id, clubId },
@@ -1165,4 +1372,165 @@ app.delete("/clubs/:clubId/transactions/:transactionId", async (c) => {
   if (!existing) throw new HttpError(404, "Transaction not found.");
   await prisma.transaction.delete({ where: { id: existing.id } });
   return c.json({ ok: true, balance: await clubBalance(clubId) });
+});
+
+function adminUserRows(
+  users: Array<{
+    id: string;
+    email: string;
+    name: string;
+    createdAt: Date;
+    lastLoginAt: Date | null;
+    memberships: Array<{ id: string; role: string; clubId: string; club: { name: string } }>;
+  }>,
+): AdminUserRow[] {
+  const rows: AdminUserRow[] = [];
+  for (const user of users) {
+    const base = {
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt.toISOString(),
+      lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
+    };
+    if (user.memberships.length === 0) {
+      rows.push({ ...base, id: user.id, membershipId: null, role: "", clubId: "", clubName: "" });
+      continue;
+    }
+    for (const membership of user.memberships) {
+      rows.push({
+        ...base,
+        id: membership.id,
+        membershipId: membership.id,
+        role: membership.role,
+        clubId: membership.clubId,
+        clubName: membership.club.name,
+      });
+    }
+  }
+  rows.sort((a, b) => compareClubName(a.clubName, b.clubName) || compareClubName(a.name, b.name));
+  return rows;
+}
+
+async function loadAdminUsers() {
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      createdAt: true,
+      lastLoginAt: true,
+      memberships: {
+        select: { id: true, role: true, clubId: true, club: { select: { name: true } } },
+      },
+    },
+  });
+  return adminUserRows(users);
+}
+
+async function loadAdminClubs() {
+  const clubs = await prisma.club.findMany({
+    select: { id: true, name: true, createdAt: true },
+  });
+  return clubs
+    .map((club) => ({ id: club.id, name: club.name, createdAt: club.createdAt.toISOString() }))
+    .sort((a, b) => compareClubName(a.name, b.name));
+}
+
+app.get("/admin/users", async (c) => {
+  const user = await authenticate(c);
+  await requireAdmin(user.id);
+  return c.json({ users: await loadAdminUsers() });
+});
+
+app.patch("/admin/users/:userId", async (c) => {
+  const actor = await authenticate(c);
+  await requireAdmin(actor.id);
+  const userId = c.req.param("userId");
+  const body = parseBody(adminUserPatchSchema, await readJson(c));
+  const existing = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!existing) throw new HttpError(404, "User not found.");
+  const club = await prisma.club.findUnique({ where: { id: body.clubId }, select: { id: true } });
+  if (!club) throw new HttpError(404, "Club not found.");
+
+  if (body.membershipId) {
+    const membership = await prisma.membership.findFirst({
+      where: { id: body.membershipId, userId },
+    });
+    if (!membership) throw new HttpError(404, "Membership not found.");
+    if (membership.role === "admin" && body.role !== "admin") {
+      const adminTotal = await prisma.membership.count({ where: { role: "admin" } });
+      if (adminTotal <= 1) throw new HttpError(403, "The administrator role can't be removed.");
+    }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { name: body.name, email: body.email } });
+      if (body.membershipId) {
+        await tx.membership.update({
+          where: { id: body.membershipId },
+          data: { role: body.role, clubId: body.clubId },
+        });
+      } else {
+        await tx.membership.create({
+          data: { userId, clubId: body.clubId, role: body.role },
+        });
+      }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new HttpError(409, "That email or club membership is already in use.");
+    }
+    throw error;
+  }
+  return c.json({ users: await loadAdminUsers() });
+});
+
+app.delete("/admin/users/:userId", async (c) => {
+  const actor = await authenticate(c);
+  await requireAdmin(actor.id);
+  const userId = c.req.param("userId");
+  if (userId === actor.id) throw new HttpError(403, "You can't delete your own account.");
+  const existing = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!existing) throw new HttpError(404, "User not found.");
+  const theirAdmin = await prisma.membership.count({ where: { userId, role: "admin" } });
+  const adminTotal = await prisma.membership.count({ where: { role: "admin" } });
+  if (theirAdmin > 0 && theirAdmin >= adminTotal) {
+    throw new HttpError(403, "The administrator account can't be deleted.");
+  }
+  await prisma.user.delete({ where: { id: userId } });
+  return c.json({ ok: true });
+});
+
+app.get("/admin/clubs", async (c) => {
+  const user = await authenticate(c);
+  await requireAdmin(user.id);
+  return c.json({ clubs: await loadAdminClubs() });
+});
+
+app.patch("/admin/clubs/:clubId", async (c) => {
+  const user = await authenticate(c);
+  await requireAdmin(user.id);
+  const clubId = c.req.param("clubId");
+  const body = parseBody(adminClubPatchSchema, await readJson(c));
+  const existing = await prisma.club.findUnique({ where: { id: clubId }, select: { id: true } });
+  if (!existing) throw new HttpError(404, "Club not found.");
+  await prisma.club.update({ where: { id: clubId }, data: { name: body.name } });
+  return c.json({ clubs: await loadAdminClubs() });
+});
+
+app.delete("/admin/clubs/:clubId", async (c) => {
+  const user = await authenticate(c);
+  await requireAdmin(user.id);
+  const clubId = c.req.param("clubId");
+  const existing = await prisma.club.findUnique({ where: { id: clubId }, select: { id: true } });
+  if (!existing) throw new HttpError(404, "Club not found.");
+  const adminOnClub = await prisma.membership.count({ where: { clubId, role: "admin" } });
+  const adminTotal = await prisma.membership.count({ where: { role: "admin" } });
+  if (adminOnClub > 0 && adminOnClub >= adminTotal) {
+    throw new HttpError(403, "The administrator club can't be deleted.");
+  }
+  await prisma.club.delete({ where: { id: clubId } });
+  return c.json({ ok: true });
 });

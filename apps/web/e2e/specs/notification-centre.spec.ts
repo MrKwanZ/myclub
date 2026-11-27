@@ -70,8 +70,12 @@ test.describe("Notification centre", () => {
     await auth.login(email, password);
     await expect(page).toHaveURL(/\/play/);
 
-    const welcome = visibleToasts(page).filter({ hasText: `Welcome ${playerName}` });
-    await expect(welcome).toBeVisible();
+    const incoming = visibleToasts(page).filter({ hasText: "Incoming Event" });
+    await expect(incoming).toBeVisible();
+    await expect(incoming).toContainText("Incoming Notify Training on");
+    await expect(incoming).toContainText(formatLongDate(eventDate));
+    await expect(incoming).toContainText("Please reply your availability");
+    await expect(visibleToasts(page).filter({ hasText: `Welcome ${playerName}` })).toHaveCount(0);
 
     await openCentre(page);
     await expect(visibleToasts(page)).toHaveCount(0);
@@ -79,7 +83,7 @@ test.describe("Notification centre", () => {
     const popover = await centre(page).boundingBox();
     expect(box && popover && popover.y >= box.y + box.height).toBe(true);
 
-    await centre(page).getByRole("button", { name: new RegExp(`Welcome ${playerName}`) }).click();
+    await centre(page).getByRole("button", { name: /Incoming Event/ }).click();
     await expect(page).toHaveURL(new RegExp(`/play/calendar\\?date=${eventDate}`));
     await expect(page.getByRole("heading", { name: formatLongDate(eventDate) })).toBeVisible();
     await expect(page.getByText("Notify Training")).toBeVisible();
@@ -105,7 +109,7 @@ test.describe("Notification centre", () => {
     await auth.gotoLogin();
     await auth.login(mgr.email, mgr.password);
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(visibleToasts(page).filter({ hasText: "Welcome" })).toBeVisible();
+    await expect(visibleToasts(page).filter({ hasText: "Welcome" })).toHaveCount(0);
 
     await page.goto("/finance");
     const create = page.getByRole("button", { name: "Create Transaction" });
@@ -114,8 +118,16 @@ test.describe("Notification centre", () => {
     const createBox = await create.boundingBox();
     expect(bellBox && createBox && bellBox.x + bellBox.width <= createBox.x).toBe(true);
 
+    const keptTitle = `Kept toast ${Date.now()}`;
+    const saved = await fetch(`${API_URL}/me/notifications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${mgr.token}` },
+      body: JSON.stringify({ title: keptTitle }),
+    });
+    expect(saved.ok).toBe(true);
+
     await openCentre(page);
-    const item = centre(page).getByRole("button", { name: /Welcome/ });
+    const item = centre(page).getByRole("button", { name: keptTitle });
     await expect(item).toBeVisible();
     await expect(centre(page).getByText(oldTitle)).toHaveCount(0);
 

@@ -112,9 +112,9 @@ test.describe("Squad & Lineup management", () => {
     const lineupNav = shell.navLink("Lineup");
     await expect(lineupNav).toBeVisible();
 
-    // 2. Upload club jersey in Settings first
-    await page.getByRole("button", { name: "Settings" }).click();
-    await expect(page).toHaveURL(/\/settings/);
+    // 2. Upload club jersey in Account first
+    await page.getByTestId("account-link").click();
+    await expect(page).toHaveURL(/\/account/);
     const fileChooserPromise = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: "Upload Jersey" }).click();
     const fileChooser = await fileChooserPromise;

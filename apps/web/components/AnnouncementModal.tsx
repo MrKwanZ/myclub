@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
 import { notifyAnnouncementCreated, notifyDanger, notifyRequired, notifyZod } from "@/lib/notify";
 import { useSession } from "@/lib/session";
-import { announcementWriteSchema } from "@myclub/shared";
+import { announcementWriteSchema, managesClub } from "@myclub/shared";
 import { Button, FieldError, Form, Input, Label, Modal, TextArea, TextField } from "@heroui/react";
 import { useState } from "react";
 
@@ -45,7 +45,7 @@ export function AnnouncementModal({ open, onClose }: { open: boolean; onClose: (
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!session.token || !session.clubId || session.role !== "manager") return;
+    if (!session.token || !session.clubId || !managesClub(session.role)) return;
     const titleError = validateWithSchema(announcementWriteSchema.shape.title, title);
     const contentError = validateWithSchema(announcementWriteSchema.shape.content, content);
     setFieldErrors({

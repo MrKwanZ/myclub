@@ -4,7 +4,7 @@ import { AnnouncementModal } from "@/components/AnnouncementModal";
 import { NotificationCentre } from "@/components/NotificationCentre";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
-import { formatEventWhen, injuryUpdateLabel, type Dashboard } from "@myclub/shared";
+import { dashboardGreeting, formatEventWhen, injuryUpdateLabel, managesClub, scoreResultClass, type Dashboard } from "@myclub/shared";
 import { Plus } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
 import { Button, Card, Tabs } from "@heroui/react";
@@ -25,7 +25,7 @@ export default function DashboardPage() {
       session.status !== "in" ||
       !session.token ||
       !session.clubId ||
-      session.role !== "manager"
+      !managesClub(session.role)
     )
       return;
     const token = session.token;
@@ -53,11 +53,11 @@ export default function DashboardPage() {
     <div className="dash">
       <div className="page-heading">
         <div className="page-title">
-          <h1>Welcome back, {session.user?.name}!</h1>
+          <h1>{dashboardGreeting(session.user?.name ?? "")}</h1>
         </div>
         <div className="page-actions">
           <NotificationCentre />
-          {session.role === "manager" ? (
+          {managesClub(session.role) ? (
             <Button variant="primary" onPress={() => setAnnounceOpen(true)}>
               <Icon data={Plus} size={16} />
               New Announcement
@@ -105,11 +105,10 @@ export default function DashboardPage() {
                 <ul className="dash-list">
                   {data?.incoming.map((event) => (
                     <li key={event.id}>
-                      <strong>
-                        {formatEventWhen(event.date, event.startTime)}
-                      </strong>
+                      <strong>{event.name || event.opponent || "Match"}</strong>
                       <span className="muted">
-                        {event.opponent || "Match"} · {event.location}
+                        {formatEventWhen(event.date, event.startTime)}
+                        {event.location ? ` · ${event.location}` : ""}
                       </span>
                     </li>
                   ))}
@@ -127,9 +126,12 @@ export default function DashboardPage() {
                 <ul className="dash-list">
                   {data?.pastResults.map((event) => (
                     <li key={event.id}>
-                      <strong>{event.opponent || "Match"}</strong>
-                      <span className="muted">
-                        {event.scoreFor}–{event.scoreAgainst} · {event.result}
+                      <strong>{event.name || event.opponent || "Match"}</strong>
+                      {event.opponent && event.opponent !== event.name ? (
+                        <span className="muted">{event.opponent}</span>
+                      ) : null}
+                      <span className={scoreResultClass(event.result)}>
+                        {event.scoreFor}–{event.scoreAgainst}
                       </span>
                     </li>
                   ))}

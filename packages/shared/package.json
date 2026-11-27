@@ -10,7 +10,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "npm exec -w @myclub/api -- tsx --test ../../packages/shared/src/statusReport.test.ts ../../packages/shared/src/notifications.test.ts ../../packages/shared/src/announcements.test.ts ../../packages/shared/src/lineup.test.ts"
+    "test": "npm exec -w @myclub/api -- tsx --test ../../packages/shared/src/statusReport.test.ts ../../packages/shared/src/notifications.test.ts ../../packages/shared/src/announcements.test.ts ../../packages/shared/src/lineup.test.ts ../../packages/shared/src/display.test.ts ../../packages/shared/src/csvImport.test.ts ../../packages/shared/src/settings.test.ts ../../packages/shared/src/admin.test.ts"
   },
   "dependencies": {
     "zod": "^3.25.76"

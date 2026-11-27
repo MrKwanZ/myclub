@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { validateIntInput } from "@/lib/fieldValidation";
 import { notifyDanger, notifySaved } from "@/lib/notify";
 import { useSession } from "@/lib/session";
-import { eventPatchSchema, formatEventWhen, localISODate, type ClubEvent } from "@myclub/shared";
+import { eventPatchSchema, formatEventWhen, localISODate, managesClub, type ClubEvent } from "@myclub/shared";
 import { Button, FieldError, Form, Input, Label, TextField } from "@heroui/react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -28,7 +28,7 @@ export default function MatchesPage() {
   }, [session.token, session.clubId]);
 
   useEffect(() => {
-    if (session.status !== "in" || session.role !== "manager") return;
+    if (session.status !== "in" || !managesClub(session.role)) return;
     let cancelled = false;
     load().catch((err: unknown) => {
       if (!cancelled) setError(err instanceof Error ? err.message : "Could not load matches.");

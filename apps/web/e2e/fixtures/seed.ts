@@ -10,6 +10,12 @@ export const SEED = {
     password: "Password123!",
     name: "Sam Striker",
   },
+  admin: {
+    email: "admin@myclub.app",
+    password: "admin123",
+    name: "Administrator",
+    clubName: "Administrator",
+  },
   multi: {
     email: "multi@e2e.test",
     password: "Password123!",

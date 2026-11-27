@@ -8,6 +8,7 @@ import { notifyDanger, notifyMaybeReminder, notifyReplied } from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import {
   addDays,
+  dashboardGreeting,
   eventHasStarted,
   eventSummary,
   eventTypeLabel,
@@ -15,6 +16,7 @@ import {
   formatRepliedAt,
   localISODate,
   playerHistoryLabel,
+  scoreResultClass,
   type ClubEvent,
   type MyAttendanceRecord,
 } from "@myclub/shared";
@@ -116,7 +118,7 @@ function PlayerDashboard() {
     <div className="dash">
       <div className="page-heading">
         <div className="page-title">
-          <h1>Dashboard</h1>
+          <h1>{dashboardGreeting(session.user?.name ?? "")}</h1>
         </div>
         <NotificationCentre />
       </div>
@@ -188,18 +190,12 @@ function PastMatch({ event }: { event: ClubEvent }) {
       </Card.Header>
       <Card.Content>
         {event.opponent ? <p>{event.opponent}</p> : null}
-        <p className={scoreClass(event.result)}>
+        <p className={scoreResultClass(event.result)}>
           {event.scoreFor}–{event.scoreAgainst}
         </p>
       </Card.Content>
     </Card>
   );
-}
-
-function scoreClass(result: ClubEvent["result"]) {
-  if (result === "win") return "score-win";
-  if (result === "loss") return "score-loss";
-  return undefined;
 }
 
 function AttendanceTable({ records, loaded }: { records: MyAttendanceRecord[]; loaded: boolean }) {
@@ -266,15 +262,7 @@ function AttendanceTable({ records, loaded }: { records: MyAttendanceRecord[]; l
 }
 
 function AttendanceStatus({ record }: { record: MyAttendanceRecord }) {
-  const started = eventHasStarted(record.date, record.startTime);
-  if ((!record.status || record.status === "unanswered") && !started) {
-    return (
-      <Chip color="warning" size="sm" variant="soft">
-        Pending Reply
-      </Chip>
-    );
-  }
-  return <>{playerHistoryLabel(record.status, started)}</>;
+  return <>{playerHistoryLabel(record.status, eventHasStarted(record.date, record.startTime))}</>;
 }
 
 function eventChipColor(type: string) {

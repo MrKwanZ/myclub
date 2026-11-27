@@ -126,6 +126,23 @@ export const e2eApi = {
       body,
     });
   },
+  updateClub(
+    token: string,
+    clubId: string,
+    body: {
+      name?: string;
+      description?: string;
+      goals?: string;
+      attendanceAlertEnabled?: boolean;
+      attendanceAlertPercent?: number | null;
+    },
+  ) {
+    return apiRequest<{ club: { id: string; name: string } }>(`/clubs/${clubId}`, {
+      method: "PATCH",
+      token,
+      body,
+    });
+  },
   async bootstrapManagerClub(prefix = "mgr") {
     const email = uniqueEmail(prefix);
     const password = "Password123!";

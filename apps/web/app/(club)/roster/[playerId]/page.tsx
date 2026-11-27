@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
 import { notifyDanger, notifyDeleted, notifySaved, notifyZod } from "@/lib/notify";
 import { useSession } from "@/lib/session";
-import { canonicalPosition, formatDayMonth, playerAccountSchema, playerStatusLabel, type PlayerDetail } from "@myclub/shared";
+import { canonicalPosition, formatDayMonth, managesClub, playerAccountSchema, playerStatusLabel, type PlayerDetail } from "@myclub/shared";
 import { EllipsisVertical, Pencil, TrashBin } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
 import {
@@ -77,7 +77,7 @@ export default function PlayerDetailPage() {
   }, [session.token, session.clubId, playerId]);
 
   useEffect(() => {
-    if (session.status !== "in" || session.role !== "manager") return;
+    if (session.status !== "in" || !managesClub(session.role)) return;
     void load();
   }, [session.status, session.role, load]);
 

@@ -336,7 +336,7 @@ export function PlayerFormModal({
               </TextField>
               <TextField
                 name="contact"
-                type="text"
+                type="tel"
                 isInvalid={Boolean(fieldErrors.contact)}
                 value={form.contact}
                 onChange={(value) => {

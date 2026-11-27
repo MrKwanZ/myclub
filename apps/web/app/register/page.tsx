@@ -1,14 +1,28 @@
 "use client";
 
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { notifyDanger } from "@/lib/notify";
 import { useSession } from "@/lib/session";
-import { clubWriteSchema, registerSchema } from "@myclub/shared";
-import { ArrowRight } from "@gravity-ui/icons";
+import {
+  clubWriteSchema,
+  csvImportBlocked,
+  parseClubCsv,
+  parsedImportValues,
+  registerSchema,
+  type AuthUser,
+  type ClubImport,
+  type ClubImportPlayer,
+  type CsvImportKind,
+  type EventWrite,
+  type ParsedClubCsv,
+  type TransactionWrite,
+} from "@myclub/shared";
+import { Xmark } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
 import {
   Breadcrumbs,
   Button,
+  Checkbox,
   FieldError,
   Form,
   Input,
@@ -16,29 +30,85 @@ import {
   Link,
   Spinner,
   Surface,
+  Table,
   TextArea,
   TextField,
 } from "@heroui/react";
 import NextLink from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
-const steps = [
-  { id: "personal", label: "Personal" },
-  { id: "club", label: "Club" },
-  { id: "confirm", label: "Confirm" },
-  { id: "complete", label: "Complete" },
-] as const;
+const stepLabels = {
+  personal: "Personal",
+  club: "Club",
+  roster: "Roster",
+  finance: "Finance",
+  events: "Events",
+  confirm: "Confirm",
+  complete: "Complete",
+} as const;
 
-type StepIndex = 0 | 1 | 2 | 3;
+type StepId = keyof typeof stepLabels;
+const previewStepIds = ["roster", "finance", "events"] as const;
+type PreviewStepId = (typeof previewStepIds)[number];
 
 type FieldErrors = Partial<
-  Record<"name" | "email" | "password" | "clubName" | "description" | "goals" | "logo" | "jerseys", string>
+  Record<
+    "name" | "email" | "password" | "clubName" | "description" | "goals" | "logo" | "jerseys" | "rosterCsv" | "financeCsv" | "eventsCsv",
+    string
+  >
 >;
 
+type CsvUpload = { file: File; parsed: ParsedClubCsv };
+
+type CreatedClub = {
+  token: string;
+  user: AuthUser;
+  clubId: string;
+  mediaUploaded: boolean;
+  imported: boolean;
+};
+
+const csvCopy: Record<
+  PreviewStepId,
+  { label: string; button: string; missing: string; summary: string; errorKey: "rosterCsv" | "financeCsv" | "eventsCsv" }
+> = {
+  roster: {
+    label: "I have a club roster",
+    button: "Upload roster CSV",
+    missing: "Upload a roster CSV.",
+    summary: "Roster CSV",
+    errorKey: "rosterCsv",
+  },
+  finance: {
+    label: "I have a club financial table",
+    button: "Upload financial table CSV",
+    missing: "Upload a financial table CSV.",
+    summary: "Financial table CSV",
+    errorKey: "financeCsv",
+  },
+  events: {
+    label: "I have a club event schedule",
+    button: "Upload event schedule CSV",
+    missing: "Upload an event schedule CSV.",
+    summary: "Event schedule CSV",
+    errorKey: "eventsCsv",
+  },
+};
+
 const IMAGE_ERROR = "Unsupported format, please upload a valid image";
+const CSV_ERROR = "Upload a CSV file.";
+const ROW_ERROR = "Fix the highlighted rows before continuing.";
 
 function isImageFile(file: File) {
   return file.type === "image/jpeg" || file.type === "image/png";
+}
+
+function isCsvFile(file: File) {
+  return file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv";
+}
+
+function isPreviewStep(stepId: StepId): stepId is PreviewStepId {
+  return (previewStepIds as readonly string[]).includes(stepId);
 }
 
 function issueMessage(error: { issues: { message: string }[] }, fallback: string) {
@@ -47,7 +117,7 @@ function issueMessage(error: { issues: { message: string }[] }, fallback: string
 
 export default function RegisterPage() {
   const session = useSession();
-  const [step, setStep] = useState<StepIndex>(0);
+  const [stepId, setStepId] = useState<StepId>("personal");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,11 +126,37 @@ export default function RegisterPage() {
   const [goals, setGoals] = useState("");
   const [logo, setLogo] = useState<File | null>(null);
   const [jerseys, setJerseys] = useState<File[]>([]);
+  const [hasRoster, setHasRoster] = useState(false);
+  const [hasFinance, setHasFinance] = useState(false);
+  const [hasEvents, setHasEvents] = useState(false);
+  const [rosterCsv, setRosterCsv] = useState<CsvUpload | null>(null);
+  const [financeCsv, setFinanceCsv] = useState<CsvUpload | null>(null);
+  const [eventsCsv, setEventsCsv] = useState<CsvUpload | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [pending, setPending] = useState(false);
+  const logoInput = useRef<HTMLInputElement>(null);
+  const jerseyInput = useRef<HTMLInputElement>(null);
+  const rosterInput = useRef<HTMLInputElement>(null);
+  const financeInput = useRef<HTMLInputElement>(null);
+  const eventsInput = useRef<HTMLInputElement>(null);
+  const createdRef = useRef<CreatedClub | null>(null);
 
   const logoPreview = useMemo(() => (logo ? URL.createObjectURL(logo) : null), [logo]);
   const jerseyPreviews = useMemo(() => jerseys.map((file) => URL.createObjectURL(file)), [jerseys]);
+  const steps = useMemo(() => {
+    const ids: StepId[] = ["personal", "club"];
+    if (hasRoster) ids.push("roster");
+    if (hasFinance) ids.push("finance");
+    if (hasEvents) ids.push("events");
+    ids.push("confirm", "complete");
+    return ids;
+  }, [hasRoster, hasFinance, hasEvents]);
+  const stepIndex = Math.max(0, steps.indexOf(stepId));
+  const uploads: Record<PreviewStepId, CsvUpload | null> = {
+    roster: rosterCsv,
+    finance: financeCsv,
+    events: eventsCsv,
+  };
 
   useEffect(() => {
     return () => {
@@ -73,6 +169,10 @@ export default function RegisterPage() {
       jerseyPreviews.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [jerseyPreviews]);
+
+  useEffect(() => {
+    if (!steps.includes(stepId)) setStepId("club");
+  }, [steps, stepId]);
 
   function personalErrors(overrides?: Partial<{ name: string; email: string; password: string }>): FieldErrors {
     const nextName = overrides?.name ?? name;
@@ -102,6 +202,9 @@ export default function RegisterPage() {
     if (logo && !isImageFile(logo)) next.logo = IMAGE_ERROR;
     if (jerseys.some((file) => !isImageFile(file))) next.jerseys = IMAGE_ERROR;
     if (jerseys.length > 12) next.jerseys = "Too many jerseys.";
+    if (hasRoster && !rosterCsv) next.rosterCsv = csvCopy.roster.missing;
+    if (hasFinance && !financeCsv) next.financeCsv = csvCopy.finance.missing;
+    if (hasEvents && !eventsCsv) next.eventsCsv = csvCopy.events.missing;
     return next;
   }
 
@@ -112,20 +215,93 @@ export default function RegisterPage() {
     return !message;
   }
 
+  function blockingPreview(): PreviewStepId | null {
+    if (hasRoster && csvImportBlocked(rosterCsv?.parsed ?? null)) return "roster";
+    if (hasFinance && csvImportBlocked(financeCsv?.parsed ?? null)) return "finance";
+    if (hasEvents && csvImportBlocked(eventsCsv?.parsed ?? null)) return "events";
+    return null;
+  }
+
+  function goTo(next: StepId) {
+    setErrors({});
+    setStepId(next);
+  }
+
   function onNextPersonal() {
     if (!showIssues(personalErrors())) return;
-    setStep(1);
+    goTo("club");
   }
 
   function onNextClub() {
     if (!showIssues(clubErrors())) return;
-    setStep(2);
+    const next = steps[steps.indexOf("club") + 1];
+    if (next && next !== "complete") goTo(next);
+  }
+
+  function onNextPreview(current: PreviewStepId) {
+    if (csvImportBlocked(uploads[current]?.parsed ?? null)) {
+      notifyDanger(uploads[current]?.parsed.fileError ?? ROW_ERROR);
+      return;
+    }
+    const next = steps[steps.indexOf(current) + 1];
+    if (next && next !== "complete") goTo(next);
   }
 
   function openReachedStep(index: number) {
-    if (pending || index >= step) return;
-    setErrors({});
-    setStep(index as StepIndex);
+    if (pending || index >= stepIndex) return;
+    const blocked = blockingPreview();
+    const blockedIndex = blocked ? steps.indexOf(blocked) : -1;
+    if (blocked && blockedIndex !== -1 && index > blockedIndex) {
+      notifyDanger(uploads[blocked]?.parsed.fileError ?? ROW_ERROR);
+      goTo(blocked);
+      return;
+    }
+    const target = steps[index];
+    if (target) goTo(target);
+  }
+
+  function importBody(): ClubImport | null {
+    const players = hasRoster && rosterCsv ? parsedImportValues<ClubImportPlayer>(rosterCsv.parsed) : [];
+    const transactions = hasFinance && financeCsv ? parsedImportValues<TransactionWrite>(financeCsv.parsed) : [];
+    const events = hasEvents && eventsCsv ? parsedImportValues<EventWrite>(eventsCsv.parsed) : [];
+    if (players.length + transactions.length + events.length === 0) return null;
+    return {
+      ...(players.length > 0 ? { players } : {}),
+      ...(transactions.length > 0 ? { transactions } : {}),
+      ...(events.length > 0 ? { events } : {}),
+    };
+  }
+
+  async function readCsv(kind: CsvImportKind, file: File) {
+    const copy = csvCopy[kind];
+    if (!isCsvFile(file)) {
+      setErrors((current) => ({ ...current, [copy.errorKey]: CSV_ERROR }));
+      notifyDanger(CSV_ERROR);
+      return;
+    }
+    const text = await file.text();
+    const parsed = parseClubCsv(kind, text);
+    const upload = { file, parsed };
+    if (kind === "roster") setRosterCsv(upload);
+    if (kind === "finance") setFinanceCsv(upload);
+    if (kind === "events") setEventsCsv(upload);
+    setErrors((current) => ({ ...current, [copy.errorKey]: undefined }));
+  }
+
+  function setChecked(kind: PreviewStepId, checked: boolean) {
+    if (kind === "roster") {
+      setHasRoster(checked);
+      if (!checked) setRosterCsv(null);
+    }
+    if (kind === "finance") {
+      setHasFinance(checked);
+      if (!checked) setFinanceCsv(null);
+    }
+    if (kind === "events") {
+      setHasEvents(checked);
+      if (!checked) setEventsCsv(null);
+    }
+    if (!checked) setErrors((current) => ({ ...current, [csvCopy[kind].errorKey]: undefined }));
   }
 
   async function onCreate() {
@@ -133,7 +309,13 @@ export default function RegisterPage() {
     const clubIssues = clubErrors();
     const nextErrors = { ...accountIssues, ...clubIssues };
     if (!showIssues(nextErrors)) {
-      setStep(accountIssues.name || accountIssues.email || accountIssues.password ? 0 : 1);
+      setStepId(accountIssues.name || accountIssues.email || accountIssues.password ? "personal" : "club");
+      return;
+    }
+    const blocked = blockingPreview();
+    if (blocked) {
+      notifyDanger(uploads[blocked]?.parsed.fileError ?? ROW_ERROR);
+      goTo(blocked);
       return;
     }
     const account = registerSchema.safeParse({ name, email, password });
@@ -143,15 +325,40 @@ export default function RegisterPage() {
     setPending(true);
     setErrors({});
     try {
-      await api.register(account.data);
-      const login = await api.login({ email: account.data.email, password: account.data.password });
-      const created = await api.createClub(login.token, club.data);
-      if (logo) await api.uploadLogo(login.token, created.club.id, logo);
-      for (const file of jerseys) {
-        await api.uploadJersey(login.token, created.club.id, file);
+      let draft = createdRef.current;
+      if (!draft) {
+        try {
+          await api.register(account.data);
+        } catch (err) {
+          if (!(err instanceof ApiError) || err.status !== 409) throw err;
+        }
+        const login = await api.login({ email: account.data.email, password: account.data.password });
+        const created = await api.createClub(login.token, club.data);
+        draft = {
+          token: login.token,
+          user: created.user,
+          clubId: created.club.id,
+          mediaUploaded: false,
+          imported: false,
+        };
+        createdRef.current = draft;
       }
-      session.signIn(login.token, created.user, created.club.id);
-      setStep(3);
+      if (!draft.mediaUploaded) {
+        if (logo) await api.uploadLogo(draft.token, draft.clubId, logo);
+        for (const file of jerseys) {
+          await api.uploadJersey(draft.token, draft.clubId, file);
+        }
+        draft = { ...draft, mediaUploaded: true };
+        createdRef.current = draft;
+      }
+      if (!draft.imported) {
+        const payload = importBody();
+        if (payload) await api.importClubData(draft.token, draft.clubId, payload);
+        draft = { ...draft, imported: true };
+        createdRef.current = draft;
+      }
+      session.signIn(draft.token, draft.user, draft.clubId);
+      setStepId("complete");
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Could not create the club.";
       setErrors({ clubName: errMsg });
@@ -161,32 +368,38 @@ export default function RegisterPage() {
     }
   }
 
+  const previewId = isPreviewStep(stepId) ? stepId : null;
+  const previewUpload = previewId ? uploads[previewId] : null;
+
   return (
     <main className="auth-wrap">
       <Surface className="register-surface" variant="default">
         <nav aria-label="Registration steps" className="register-crumbs">
           <Breadcrumbs>
             {steps.map((item, index) => {
-              const reached = index < step;
-              const future = index > step;
+              const reached = index < stepIndex;
+              const future = index > stepIndex;
               return (
                 <Breadcrumbs.Item
-                  key={item.id}
-                  aria-current={index === step ? "page" : "false"}
-                  className={index === step ? "register-crumb-current" : undefined}
-                  href={index === step ? undefined : "#"}
+                  key={item}
+                  aria-current={item === stepId ? "page" : "false"}
+                  className={item === stepId ? "register-crumb-current" : undefined}
+                  href={item === stepId ? undefined : "#"}
                   isDisabled={future || pending}
                   onClick={(event) => {
                     event.preventDefault();
                     if (reached && !pending) openReachedStep(index);
                   }}
                 >
-                  {item.label}
+                  {stepLabels[item]}
                 </Breadcrumbs.Item>
               );
             })}
           </Breadcrumbs>
         </nav>
+        {previewId ? (
+          <p className="register-import-note">Below is the data read from your file. Check if the data is correct.</p>
+        ) : null}
 
         <div className="register-columns">
           <div className="register-intro">
@@ -195,7 +408,7 @@ export default function RegisterPage() {
             <p className="muted">Manage your club and players with ease.</p>
           </div>
 
-          {step === 0 ? (
+          {stepId === "personal" ? (
             <Form
               className="register-form"
               onSubmit={(event) => {
@@ -258,7 +471,7 @@ export default function RegisterPage() {
             </Form>
           ) : null}
 
-          {step === 1 ? (
+          {stepId === "club" ? (
             <Form
               className="register-form"
               onSubmit={(event) => {
@@ -315,80 +528,139 @@ export default function RegisterPage() {
                 <TextArea />
                 <FieldError>{errors.goals}</FieldError>
               </TextField>
-              <div className="field" data-invalid={errors.logo ? "true" : undefined}>
-                <Label htmlFor="register-logo">Club logo</Label>
-                <input
-                  accept="image/jpeg,image/png"
-                  aria-invalid={Boolean(errors.logo)}
-                  id="register-logo"
-                  type="file"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] ?? null;
-                    event.target.value = "";
-                    if (file && !isImageFile(file)) {
-                      setErrors((current) => ({ ...current, logo: IMAGE_ERROR }));
-                      notifyDanger(IMAGE_ERROR);
-                      return;
-                    }
-                    setLogo(file);
-                    setErrors((current) => ({ ...current, logo: undefined }));
-                  }}
+              <div className="register-csv-list">
+                <CsvChoice
+                  checked={hasRoster}
+                  copy={csvCopy.roster}
+                  error={errors.rosterCsv}
+                  fileName={rosterCsv?.file.name}
+                  inputRef={rosterInput}
+                  testId="register-roster-csv"
+                  onChecked={(checked) => setChecked("roster", checked)}
+                  onFile={(file) => void readCsv("roster", file)}
                 />
-                {logo ? <span className="muted">{logo.name}</span> : null}
-                {errors.logo ? (
-                  <span className="field-error" role="alert">
-                    {errors.logo}
-                  </span>
-                ) : null}
+                <CsvChoice
+                  checked={hasFinance}
+                  copy={csvCopy.finance}
+                  error={errors.financeCsv}
+                  fileName={financeCsv?.file.name}
+                  inputRef={financeInput}
+                  testId="register-finance-csv"
+                  onChecked={(checked) => setChecked("finance", checked)}
+                  onFile={(file) => void readCsv("finance", file)}
+                />
+                <CsvChoice
+                  checked={hasEvents}
+                  copy={csvCopy.events}
+                  error={errors.eventsCsv}
+                  fileName={eventsCsv?.file.name}
+                  inputRef={eventsInput}
+                  testId="register-events-csv"
+                  onChecked={(checked) => setChecked("events", checked)}
+                  onFile={(file) => void readCsv("events", file)}
+                />
               </div>
-              <div className="field" data-invalid={errors.jerseys ? "true" : undefined}>
-                <Label htmlFor="register-jerseys">Jerseys</Label>
-                <input
-                  accept="image/jpeg,image/png"
-                  aria-invalid={Boolean(errors.jerseys)}
-                  id="register-jerseys"
-                  multiple
-                  type="file"
-                  onChange={(event) => {
-                    const files = Array.from(event.target.files ?? []);
-                    event.target.value = "";
-                    if (files.some((file) => !isImageFile(file))) {
-                      setErrors((current) => ({ ...current, jerseys: IMAGE_ERROR }));
-                      notifyDanger(IMAGE_ERROR);
-                      return;
-                    }
-                    const next = [...jerseys, ...files];
-                    if (next.length > 12) {
-                      setErrors((current) => ({ ...current, jerseys: "Too many jerseys." }));
-                      notifyDanger("Too many jerseys.");
-                      return;
-                    }
-                    setJerseys(next);
-                    setErrors((current) => ({ ...current, jerseys: undefined }));
-                  }}
-                />
-                {jerseys.length > 0 ? (
-                  <ul className="stack-tight">
-                    {jerseys.map((file, index) => (
-                      <li key={`${file.name}-${index}`}>{file.name}</li>
-                    ))}
-                  </ul>
-                ) : null}
-                {errors.jerseys ? (
-                  <span className="field-error" role="alert">
-                    {errors.jerseys}
-                  </span>
-                ) : null}
+              <div className="field-pair" data-testid="register-media-row">
+                <div className="stack-tight">
+                  <div className="field" data-invalid={errors.logo ? "true" : undefined}>
+                    <Label>Club logo</Label>
+                    <input
+                      ref={logoInput}
+                      accept="image/jpeg,image/png"
+                      aria-invalid={Boolean(errors.logo)}
+                      data-testid="register-logo-input"
+                      hidden
+                      type="file"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        event.target.value = "";
+                        if (file && !isImageFile(file)) {
+                          setErrors((current) => ({ ...current, logo: IMAGE_ERROR }));
+                          notifyDanger(IMAGE_ERROR);
+                          return;
+                        }
+                        setLogo(file);
+                        setErrors((current) => ({ ...current, logo: undefined }));
+                      }}
+                    />
+                    <Button type="button" variant="outline" onPress={() => logoInput.current?.click()}>
+                      Upload Club Logo
+                    </Button>
+                    {errors.logo ? (
+                      <span className="field-error" data-visible="" role="alert">
+                        {errors.logo}
+                      </span>
+                    ) : null}
+                  </div>
+                  {logo && logoPreview ? (
+                    <img alt="Club logo preview" className="club-logo" src={logoPreview} />
+                  ) : null}
+                </div>
+                <div className="stack-tight">
+                  <div className="field" data-invalid={errors.jerseys ? "true" : undefined}>
+                    <Label>Jerseys</Label>
+                    <input
+                      ref={jerseyInput}
+                      accept="image/jpeg,image/png"
+                      aria-invalid={Boolean(errors.jerseys)}
+                      data-testid="register-jersey-input"
+                      hidden
+                      multiple
+                      type="file"
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files ?? []);
+                        event.target.value = "";
+                        if (files.some((file) => !isImageFile(file))) {
+                          setErrors((current) => ({ ...current, jerseys: IMAGE_ERROR }));
+                          notifyDanger(IMAGE_ERROR);
+                          return;
+                        }
+                        const next = [...jerseys, ...files];
+                        if (next.length > 12) {
+                          setErrors((current) => ({ ...current, jerseys: "Too many jerseys." }));
+                          notifyDanger("Too many jerseys.");
+                          return;
+                        }
+                        setJerseys(next);
+                        setErrors((current) => ({ ...current, jerseys: undefined }));
+                      }}
+                    />
+                    <Button type="button" variant="outline" onPress={() => jerseyInput.current?.click()}>
+                      Upload Jersey
+                    </Button>
+                    {errors.jerseys ? (
+                      <span className="field-error" data-visible="" role="alert">
+                        {errors.jerseys}
+                      </span>
+                    ) : null}
+                  </div>
+                  {jerseyPreviews.length > 0 ? (
+                    <div className="jersey-settings-list" data-testid="register-jersey-list">
+                      {jerseyPreviews.map((url, index) => (
+                        <div key={url} className="jersey-settings-item">
+                          <img
+                            alt={`Club jersey ${index + 1}`}
+                            className="jersey-settings-thumb"
+                            src={url}
+                          />
+                          <Button
+                            isIconOnly
+                            aria-label={`Remove jersey ${index + 1}`}
+                            size="sm"
+                            type="button"
+                            variant="tertiary"
+                            onPress={() => setJerseys((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                          >
+                            <Icon data={Xmark} size={14} />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <div className="register-actions">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onPress={() => {
-                    setErrors({});
-                    setStep(0);
-                  }}
-                >
+                <Button type="button" variant="ghost" onPress={() => goTo("personal")}>
                   Back
                 </Button>
                 <Button type="submit">Next</Button>
@@ -396,7 +668,34 @@ export default function RegisterPage() {
             </Form>
           ) : null}
 
-          {step === 2 ? (
+          {previewId ? (
+            <Form
+              className="register-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onNextPreview(previewId);
+              }}
+            >
+              <ImportPreview upload={previewUpload} />
+              <div className="register-actions">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onPress={() => {
+                    const previous = steps[steps.indexOf(previewId) - 1];
+                    if (previous) goTo(previous);
+                  }}
+                >
+                  Back
+                </Button>
+                <Button isDisabled={csvImportBlocked(previewUpload?.parsed ?? null)} type="submit">
+                  Next
+                </Button>
+              </div>
+            </Form>
+          ) : null}
+
+          {stepId === "confirm" ? (
             <Form
               className="register-form"
               onSubmit={(event) => {
@@ -425,6 +724,14 @@ export default function RegisterPage() {
                   <dt>Goals</dt>
                   <dd>{goals.trim() || "None"}</dd>
                 </div>
+                {previewStepIds.map((kind) =>
+                  uploads[kind] ? (
+                    <div key={kind}>
+                      <dt>{csvCopy[kind].summary}</dt>
+                      <dd>{uploads[kind]?.file.name}</dd>
+                    </div>
+                  ) : null,
+                )}
                 <div>
                   <dt>Club logo</dt>
                   <dd>
@@ -456,7 +763,7 @@ export default function RegisterPage() {
                 </div>
               </dl>
               {errors.clubName ? (
-                <span className="field-error" role="alert">
+                <span className="field-error" data-visible="" role="alert">
                   {errors.clubName}
                 </span>
               ) : null}
@@ -472,8 +779,8 @@ export default function RegisterPage() {
                       type="button"
                       variant="ghost"
                       onPress={() => {
-                        setErrors({});
-                        setStep(1);
+                        const previous = steps[steps.indexOf("confirm") - 1];
+                        if (previous) goTo(previous);
                       }}
                     >
                       Back
@@ -485,7 +792,7 @@ export default function RegisterPage() {
             </Form>
           ) : null}
 
-          {step === 3 ? (
+          {stepId === "complete" ? (
             <div className="register-form">
               <p className="register-complete">
                 Good news! You have created your club.{" "}
@@ -499,5 +806,115 @@ export default function RegisterPage() {
         </div>
       </Surface>
     </main>
+  );
+}
+
+function CsvChoice({
+  checked,
+  copy,
+  error,
+  fileName,
+  inputRef,
+  testId,
+  onChecked,
+  onFile,
+}: {
+  checked: boolean;
+  copy: (typeof csvCopy)[PreviewStepId];
+  error?: string;
+  fileName?: string;
+  inputRef: RefObject<HTMLInputElement | null>;
+  testId: string;
+  onChecked: (checked: boolean) => void;
+  onFile: (file: File) => void;
+}) {
+  return (
+    <div className="register-csv-block" data-testid={testId}>
+      <Checkbox isSelected={checked} name={testId} onChange={onChecked}>
+        <Checkbox.Content>
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+          {copy.label}
+        </Checkbox.Content>
+      </Checkbox>
+      {checked ? (
+        <div className="field" data-invalid={error ? "true" : undefined}>
+          <input
+            ref={inputRef}
+            accept=".csv,text/csv"
+            aria-invalid={Boolean(error)}
+            data-testid={`${testId}-input`}
+            hidden
+            type="file"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) onFile(file);
+            }}
+          />
+          <Button type="button" variant="outline" onPress={() => inputRef.current?.click()}>
+            {copy.button}
+          </Button>
+          {fileName ? <p className="register-csv-file">{fileName}</p> : null}
+          {error ? (
+            <span className="field-error" data-visible="" role="alert">
+              {error}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ImportPreview({ upload }: { upload: CsvUpload | null }) {
+  if (!upload) return <p className="banner">Upload a CSV file on the Club step.</p>;
+  const blockedMessage = upload.parsed.fileError
+    ? upload.parsed.fileError
+    : upload.parsed.rows.some((row) => Object.keys(row.errors).length > 0)
+      ? ROW_ERROR
+      : null;
+  return (
+    <div className="register-preview-table">
+      {blockedMessage ? (
+        <p className="banner" role="alert">
+          {blockedMessage}
+        </p>
+      ) : null}
+      <Table>
+        <Table.ScrollContainer>
+          <Table.Content aria-label={`${stepLabels[upload.parsed.kind]} import`}>
+            <Table.Header>
+              {upload.parsed.columns.map((column, index) => (
+                <Table.Column key={column.key} isRowHeader={index === 0}>
+                  {column.label}
+                </Table.Column>
+              ))}
+            </Table.Header>
+            <Table.Body>
+              {upload.parsed.rows.length === 0 ? (
+                <Table.Row>
+                  {upload.parsed.columns.map((column, index) => (
+                    <Table.Cell key={column.key}>{index === 0 ? "No rows." : ""}</Table.Cell>
+                  ))}
+                </Table.Row>
+              ) : (
+                upload.parsed.rows.map((row, rowIndex) => (
+                  <Table.Row key={`${upload.file.name}-${rowIndex}`}>
+                    {upload.parsed.columns.map((column) => (
+                      <Table.Cell key={column.key}>
+                        <span>{row.rawCells[column.key] ?? ""}</span>
+                        {row.errors[column.key] ? <span className="field-error" data-visible="">{row.errors[column.key]}</span> : null}
+                      </Table.Cell>
+                    ))}
+                  </Table.Row>
+                ))
+              )}
+            </Table.Body>
+          </Table.Content>
+        </Table.ScrollContainer>
+      </Table>
+    </div>
   );
 }

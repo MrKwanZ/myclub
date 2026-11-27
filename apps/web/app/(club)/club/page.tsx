@@ -7,10 +7,10 @@ export default function ClubPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/settings");
+    router.replace("/account");
   }, [router]);
 
   return (
-    <p className="muted">Opening settings…</p>
+    <p className="muted">Opening account…</p>
   );
 }

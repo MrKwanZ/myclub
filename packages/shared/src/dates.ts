@@ -138,6 +138,29 @@ export function formatDayMonth(iso: string) {
   });
 }
 
+/** Full local datetime, for example "2026-11-27 05:23 PM". */
+export function formatDateTime(value: Date | string | null) {
+  if (!value) return "";
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const meridiem = date.getHours() >= 12 ? "PM" : "AM";
+  const hour12 = date.getHours() % 12 || 12;
+  const hours = String(hour12).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes} ${meridiem}`;
+}
+
+/** Club-name sort. A blank name sorts after every named club. */
+export function compareClubName(a: string, b: string) {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a.localeCompare(b, "en", { sensitivity: "base" });
+}
+
 /** Local date and 12-hour time, for example "09/11/2026 11:52 AM". */
 export function formatRepliedAt(iso: string | null) {
   if (!iso) return "–";

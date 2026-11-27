@@ -38,7 +38,7 @@ test.describe("Public landing, registration, login, and sign out", () => {
     });
 
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Riley Manager/ })).toBeVisible();
   });
 
   test("invalid login shows error; valid manager and player logins route to role home and sign out clears storage", async ({

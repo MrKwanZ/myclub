@@ -1,6 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test as setup } from "@playwright/test";
+import { TEST_DATABASE_URL } from "../playwright.config";
 import { e2eApi, offsetDaysISO } from "./fixtures/api";
 import { SEED } from "./fixtures/seed";
 import { CLUB_KEY, TOKEN_KEY } from "../lib/storage";
@@ -25,6 +27,12 @@ async function saveLocalStorageState(
 }
 
 setup("seed baseline accounts and save storageState", async ({ browser }) => {
+  execFileSync("npx", ["tsx", "src/adminSeedCli.ts"], {
+    cwd: resolve(__dirname, "../../api"),
+    stdio: "inherit",
+    env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
+  });
+
   // 1. Register & login baseline manager
   await e2eApi.register({
     email: SEED.manager.email,

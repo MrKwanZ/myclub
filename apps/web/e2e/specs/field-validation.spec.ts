@@ -62,9 +62,10 @@ test.describe("Field validation and FieldError highlighting", () => {
       [TOKEN_KEY, CLUB_KEY, mgr.token, mgr.clubId],
     );
 
-    // Settings
-    await page.goto("/settings");
-    const clubNameInput = page.getByLabel("Name");
+    // Account
+    await page.goto("/account");
+    await page.getByRole("button", { name: "Club" }).click();
+    const clubNameInput = page.getByLabel("Club name");
     await expect(clubNameInput).toHaveValue(mgr.clubName);
     await clubNameInput.fill("");
     await clubNameInput.blur();

@@ -77,13 +77,13 @@ test.describe("Player dedicated dashboard", () => {
     );
 
     await page.goto("/play");
-    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Riley Dash/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Dashboard" })).toBeVisible();
     await expect(page.getByRole("button", { name: "My attendance" })).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Upcoming Event" })).toHaveAttribute("aria-selected", "true");
 
     const upcoming = page.locator(".event-card").filter({ hasText: "Next Training" });
-    await expect(upcoming.getByText("Pending Reply")).toBeVisible();
+    await expect(upcoming.getByText("Pending Reply")).toHaveCount(0);
     await upcoming.getByRole("button", { name: "RSVP" }).click();
     await expect(page.getByRole("menuitemradio", { name: "RSVP" })).toBeVisible();
     await expect(page.getByRole("menuitemradio", { name: "Yes" })).toBeVisible();

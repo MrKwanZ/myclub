@@ -7,7 +7,7 @@ test.describe("Registration flow", () => {
     const clubName = `Flow FC ${Date.now().toString().slice(-4)}`;
 
     await page.goto("/register");
-    await expect(page.getByRole("heading", { name: "Create a club" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create your club" })).toBeVisible();
     const crumbs = page.getByRole("navigation", { name: "Registration steps" });
     const crumb = (name: string) => crumbs.locator(".breadcrumbs__link", { hasText: name });
     await expect(crumbs).toBeVisible();
@@ -25,7 +25,14 @@ test.describe("Registration flow", () => {
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
     await expect(page.getByLabel("Club name")).toBeVisible();
-    await expect(page.getByLabel("Jerseys")).toBeVisible();
+    const logoButton = page.getByRole("button", { name: "Upload Club Logo" });
+    const jerseyButton = page.getByRole("button", { name: "Upload Jersey" });
+    await expect(logoButton).toBeVisible();
+    await expect(jerseyButton).toBeVisible();
+    const logoBox = await logoButton.boundingBox();
+    const jerseyBox = await jerseyButton.boundingBox();
+    expect(logoBox && jerseyBox && jerseyBox.x > logoBox.x).toBe(true);
+    expect(logoBox && jerseyBox && Math.abs(logoBox.y - jerseyBox.y) < 12).toBe(true);
     await expect(crumb("Personal")).not.toHaveAttribute("aria-disabled", "true");
     await expect(crumb("Confirm")).toHaveAttribute("aria-disabled", "true");
 
@@ -65,6 +72,6 @@ test.describe("Registration flow", () => {
     await expect(crumb("Confirm")).not.toHaveAttribute("aria-disabled", "true");
     await page.getByRole("link", { name: "Start managing your club" }).click();
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Casey Manager/ })).toBeVisible();
   });
 });

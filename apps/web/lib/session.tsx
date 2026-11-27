@@ -1,6 +1,6 @@
 "use client";
 
-import type { AuthUser } from "@myclub/shared";
+import { pickClubId, roleForClub, type AuthUser } from "@myclub/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { CLUB_KEY, TOKEN_KEY } from "./storage";
@@ -13,6 +13,7 @@ type SessionValue = {
   user: AuthUser | null;
   clubId: string | null;
   role: string | null;
+  isAdmin: boolean;
   signIn: (token: string, user: AuthUser, clubId?: string) => void;
   signOut: () => void;
   setClubId: (clubId: string) => void;
@@ -22,8 +23,7 @@ type SessionValue = {
 const SessionContext = createContext<SessionValue | null>(null);
 
 function pickClub(user: AuthUser, preferred?: string | null) {
-  if (preferred && user.memberships.some((membership) => membership.clubId === preferred)) return preferred;
-  return user.memberships[0]?.clubId ?? null;
+  return pickClubId(user, preferred);
 }
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
@@ -88,11 +88,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, [token, clubId, applyUser]);
 
-  const role = user?.memberships.find((membership) => membership.clubId === clubId)?.role ?? null;
+  const role = user ? roleForClub(user, clubId) : null;
+  const isAdmin = Boolean(user?.isAdmin);
 
   const value = useMemo(
-    () => ({ status, token, user, clubId, role, signIn, signOut, setClubId, refresh }),
-    [status, token, user, clubId, role, signIn, signOut, setClubId, refresh],
+    () => ({ status, token, user, clubId, role, isAdmin, signIn, signOut, setClubId, refresh }),
+    [status, token, user, clubId, role, isAdmin, signIn, signOut, setClubId, refresh],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -11,6 +11,7 @@ import {
   formatEventWhen,
   layoutLineupPlayers,
   localISODate,
+  managesClub,
   normalizeLineupPosition,
   validateLineupAddition,
   type ClubEvent,
@@ -68,7 +69,7 @@ export default function LineupPage() {
   const [savingMatchday, setSavingMatchday] = useState(false);
 
   useEffect(() => {
-    if (session.status !== "in" || !session.token || !session.clubId || session.role !== "manager") return;
+    if (session.status !== "in" || !session.token || !session.clubId || !managesClub(session.role)) return;
     const token = session.token;
     const clubId = session.clubId;
     let cancelled = false;
@@ -231,7 +232,7 @@ export default function LineupPage() {
     }
   }
 
-  if (session.role !== "manager") return null;
+  if (!managesClub(session.role)) return null;
 
   return (
     <>
@@ -293,7 +294,7 @@ export default function LineupPage() {
             <Label className="lineup-section-label">Jersey</Label>
             {jerseys.length === 0 ? (
               <p className="muted lineup-jersey-empty">
-                No jerseys uploaded yet. Upload jerseys in <Link href="/settings">Settings</Link>.
+                No jerseys uploaded yet. Upload jerseys in <Link href="/account">Account</Link>.
               </p>
             ) : (
               <div aria-label="Jersey" className="lineup-jersey-grid" role="group">

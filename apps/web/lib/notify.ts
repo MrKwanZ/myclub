@@ -3,14 +3,15 @@
 import { api } from "@/lib/api";
 import { CLUB_KEY, TOKEN_KEY } from "@/lib/storage";
 import {
-  eventTypeLabel,
-  formatLongDate,
+  incomingEventMessage,
+  incomingEventTitle,
+  shouldRemindEventReply,
   type AuthUser,
-  type ClubEvent,
   type NotificationKind,
   type NotificationVariant,
 } from "@myclub/shared";
 import { toast } from "@heroui/react";
+import { createElement } from "react";
 
 type ShowOptions = {
   variant?: NotificationVariant;
@@ -19,16 +20,25 @@ type ShowOptions = {
   eventDate?: string | null;
   token?: string;
   clubId?: string | null;
+  onPress?: () => void;
+  timeout?: number;
 };
 
 const pending = new Set<Promise<unknown>>();
 
 function show(title: string, options: ShowOptions = {}) {
   const variant = options.variant ?? "default";
-  const toastOptions = options.description ? { description: options.description } : {};
-  if (variant === "success") toast.success(title, toastOptions);
-  else if (variant === "danger") toast.danger(title, toastOptions);
-  else toast(title, { ...toastOptions, variant: "default" });
+  const message = options.onPress
+    ? createElement("button", { type: "button", className: "toast-link", onClick: options.onPress }, title)
+    : title;
+  const toastOptions = {
+    ...(options.description ? { description: options.description } : {}),
+    ...(options.timeout != null ? { timeout: options.timeout } : {}),
+  };
+  if (variant === "success") toast.success(message, toastOptions);
+  else if (variant === "danger") toast.danger(message, toastOptions);
+  else if (variant === "warning") toast.warning(message, toastOptions);
+  else toast(message, { ...toastOptions, variant: "default" });
   record(title, variant, options);
 }
 
@@ -105,6 +115,18 @@ export function notifyTransactionAdded() {
   show("Transaction added", { variant: "success" });
 }
 
+export function notifyImported(kind: "Roster" | "Event" | "Finance", onView: () => void) {
+  show(`${kind} data uploaded successfully. Click to view.`, {
+    variant: "success",
+    onPress: onView,
+    timeout: 8000,
+  });
+}
+
+export function notifyImportFailed(kind: "Roster" | "Event" | "Finance") {
+  show(`Failed to upload ${kind} data, please try again later`, { variant: "danger" });
+}
+
 export function notifyDeleted() {
   show("Deleted successfully", { variant: "success" });
 }
@@ -178,31 +200,35 @@ export async function notifyAnnouncements(token: string) {
   }
 }
 
-export async function notifyWelcome(token: string, user: AuthUser, clubId: string | null) {
-  const role = user.memberships.find((membership) => membership.clubId === clubId)?.role ?? null;
-  let next: ClubEvent | undefined;
-  let description: string | undefined;
-  if (clubId) {
-    try {
-      const result = await api.events(token, clubId, { upcoming: "1" });
-      next = result.events[0];
-      if (next) description = incomingCopy(next, role, result.playerLinked !== false);
-    } catch {
-      description = undefined;
+/** Warns a player on sign-in when their attendance is under the club's saved percentage. */
+export async function notifyAttendanceAlerts(token: string) {
+  try {
+    const { alerts } = await api.attendanceAlerts(token);
+    for (const alert of alerts) {
+      show(alert.message, { variant: "warning", token, clubId: alert.clubId });
     }
+  } catch {
+    return;
   }
-  show(`Welcome ${user.name}`, {
-    description,
-    token,
-    clubId,
-    ...(next && description ? { kind: "event" as const, eventDate: next.date } : {}),
-  });
 }
 
-function incomingCopy(event: ClubEvent, role: string | null, playerLinked: boolean) {
-  const when = `${formatLongDate(event.date)}, ${event.startTime}`;
-  let message = `Incoming a ${eventTypeLabel(event.type)} on ${when} at ${event.location}.`;
-  const unanswered = !event.myAttendance || event.myAttendance.status === "unanswered";
-  if (role === "player" && playerLinked && unanswered) message += " Please reply your availability";
-  return message;
+/** Tells the member about the next event. No welcome toast is shown at sign-in. */
+export async function notifyIncomingEvent(token: string, user: AuthUser, clubId: string | null) {
+  if (!clubId) return;
+  const role = user.memberships.find((membership) => membership.clubId === clubId)?.role ?? null;
+  try {
+    const result = await api.events(token, clubId, { upcoming: "1" });
+    const next = result.events[0];
+    if (!next) return;
+    const remindReply = shouldRemindEventReply(role, result.playerLinked !== false, next.myAttendance?.status);
+    show(incomingEventTitle, {
+      description: incomingEventMessage(next, remindReply),
+      token,
+      clubId,
+      kind: "event",
+      eventDate: next.date,
+    });
+  } catch {
+    return;
+  }
 }

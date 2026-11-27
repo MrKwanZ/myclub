@@ -28,6 +28,7 @@ describe("notification centre", () => {
     assert.deepEqual(parsed, { title: "Saved successfully", description: "", variant: "success", kind: "other" });
     assert.equal(notificationWriteSchema.safeParse({ title: "  " }).success, false);
     assert.equal(notificationWriteSchema.safeParse({ title: "Hi", kind: "event", eventDate: "28/11/2026" }).success, false);
-    assert.equal(notificationWriteSchema.safeParse({ title: "Hi", variant: "warning" }).success, false);
+    assert.equal(notificationWriteSchema.safeParse({ title: "Hi", variant: "warning" }).success, true);
+    assert.equal(notificationWriteSchema.safeParse({ title: "Hi", variant: "accent" }).success, false);
   });
 });

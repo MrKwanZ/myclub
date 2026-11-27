@@ -21,6 +21,7 @@ import {
   formatEventCardDate,
   formatLongDate,
   localISODate,
+  managesClub,
   type ClubEvent,
   type EventType,
 } from "@myclub/shared";
@@ -94,7 +95,7 @@ function ManagerCalendar() {
   const rangeKey = focused ? `${focused.year}-${focused.month}` : "";
 
   useEffect(() => {
-    if (!ready || !focused || session.status !== "in" || !session.token || !session.clubId || session.role !== "manager") {
+    if (!ready || !focused || session.status !== "in" || !session.token || !session.clubId || !managesClub(session.role)) {
       return;
     }
     const token = session.token;

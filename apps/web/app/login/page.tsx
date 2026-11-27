@@ -2,7 +2,14 @@
 
 import { api } from "@/lib/api";
 import { validateWithSchema } from "@/lib/fieldValidation";
-import { notifyAnnouncements, notifyDanger, notifyStatusNotices, notifyWelcome, notifyZod } from "@/lib/notify";
+import {
+  notifyAnnouncements,
+  notifyAttendanceAlerts,
+  notifyDanger,
+  notifyIncomingEvent,
+  notifyStatusNotices,
+  notifyZod,
+} from "@/lib/notify";
 import { useSession } from "@/lib/session";
 import { loginSchema } from "@myclub/shared";
 import { Button, FieldError, Form, Input, Label, TextField } from "@heroui/react";
@@ -65,7 +72,8 @@ export default function LoginPage() {
       session.signIn(result.token, result.user);
       const clubId = result.user.memberships[0]?.clubId ?? null;
       const role = result.user.memberships[0]?.role;
-      await notifyWelcome(result.token, result.user, clubId);
+      await notifyIncomingEvent(result.token, result.user, clubId);
+      await notifyAttendanceAlerts(result.token);
       if (result.user.memberships.some((membership) => membership.role === "manager")) {
         await notifyStatusNotices(result.token);
       }

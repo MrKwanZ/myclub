@@ -5,7 +5,7 @@ import { PlayerFormModal } from "@/components/PlayerFormModal";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { usePagedRows } from "@/lib/usePagedRows";
-import { canonicalPosition, playerStatusLabel, type Player } from "@myclub/shared";
+import { canonicalPosition, managesClub, playerStatusLabel, type Player } from "@myclub/shared";
 import { Plus } from "@gravity-ui/icons";
 import { Icon } from "@gravity-ui/uikit";
 import { Button, Chip, Link, Spinner, Table } from "@heroui/react";
@@ -41,7 +41,7 @@ export default function RosterPage() {
   }, [session.token, session.clubId]);
 
   useEffect(() => {
-    if (session.status !== "in" || session.role !== "manager") return;
+    if (session.status !== "in" || !managesClub(session.role)) return;
     let cancelled = false;
     load().catch((err: unknown) => {
       if (!cancelled) setError(err instanceof Error ? err.message : "Could not load the roster.");

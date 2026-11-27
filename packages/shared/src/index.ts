@@ -1,38 +1,29 @@
 import { z } from "zod";
 
 import { formatDayMonth } from "./dates";
+import { clubImportPlayerSchema, csvImportRowLimit } from "./csvImport";
+import { canonicalPosition, eventTypeLabel, eventTypes, playerPositions, playerStatuses } from "./labels";
 import { jerseyDataUrlSchema, type MatchLineup } from "./lineup";
 
 export * from "./dates";
+export * from "./display";
+export * from "./labels";
 export * from "./lineup";
-
-export const playerStatuses = ["active", "injured", "left"] as const;
-export const playerPositions = ["Goalkeeper", "Defender", "Midfielder", "Forward"] as const;
-
-const positionAliases: Record<string, (typeof playerPositions)[number]> = {
-  gk: "Goalkeeper",
-  goalkeeper: "Goalkeeper",
-  goalie: "Goalkeeper",
-  keeper: "Goalkeeper",
-  def: "Defender",
-  defender: "Defender",
-  defence: "Defender",
-  defense: "Defender",
-  mid: "Midfielder",
-  midfield: "Midfielder",
-  midfielder: "Midfielder",
-  fwd: "Forward",
-  forward: "Forward",
-  striker: "Forward",
-};
-
-/** Map a stored position onto the roster dropdown. Unknown text is left unchanged. */
-export function canonicalPosition(value: string) {
-  const key = value.trim().toLowerCase();
-  if (!key) return "";
-  return positionAliases[key] ?? value.trim();
-}
-export const eventTypes = ["training", "match", "leisure", "friendly"] as const;
+export {
+  clubImportPlayerSchema,
+  csvImportBlocked,
+  csvImportRowLimit,
+  parseClubCsv,
+  parseCsv,
+  parsedImportValues,
+} from "./csvImport";
+export type {
+  ClubImportPlayer,
+  CsvImportColumn,
+  CsvImportKind,
+  CsvImportRow,
+  ParsedClubCsv,
+} from "./csvImport";
 
 export function injuryUpdateLabel(player: {
   name: string;
@@ -68,21 +59,6 @@ export function playerStatusLabel(status: string) {
   }
 }
 
-export function eventTypeLabel(type: string) {
-  switch (type) {
-    case "match":
-      return "Match";
-    case "friendly":
-      return "Friendly";
-    case "leisure":
-      return "Leisure";
-    case "training":
-      return "Training";
-    default:
-      return type;
-  }
-}
-
 export function eventSummary(event: { type: string; opponent: string | null }) {
   if (event.type === "match" || event.type === "friendly") return event.opponent || eventTypeLabel(event.type);
   return eventTypeLabel(event.type);
@@ -92,6 +68,8 @@ export const attendanceStatuses = ["unanswered", "present", "absent", "maybe", "
 export const transactionTypes = ["income", "expense"] as const;
 /** Roles this version assigns. `coach` is reserved in the database column and is not offered here. */
 export const membershipRoles = ["manager", "player"] as const;
+/** Roles an administrator can assign from the admin panel. */
+export const adminRoles = ["manager", "player", "admin"] as const;
 
 const emailSchema = z
   .string()
@@ -141,6 +119,11 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required."),
 });
 
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required."),
+  newPassword: passwordSchema,
+});
+
 export const clubWriteSchema = z.object({
   name: z.string().trim().min(1, "Club name is required.").max(120, "Club name is too long."),
   description: z.string().trim().max(4000, "Description is too long.").optional().default(""),
@@ -155,6 +138,18 @@ const clubLogoSchema = z
     "Unsupported format, please upload a valid image",
   );
 
+export const profilePatchSchema = z.object({
+  name: z.string().trim().min(1, "Name is required.").max(80, "Name is too long."),
+  contact: contactSchema,
+  avatarUrl: clubLogoSchema.optional(),
+});
+
+const attendancePercentSchema = z
+  .number({ invalid_type_error: "Attendance percentage is required." })
+  .int("Use a whole number.")
+  .min(1, "Percentage must be from 1 to 100.")
+  .max(100, "Percentage must be from 1 to 100.");
+
 export const clubPatchSchema = z
   .object({
     name: z.string().trim().min(1, "Club name is required.").max(120, "Club name is too long.").optional(),
@@ -162,6 +157,17 @@ export const clubPatchSchema = z
     goals: z.string().trim().max(4000, "Goals are too long.").optional(),
     logoUrl: clubLogoSchema.optional(),
     jerseys: z.array(jerseyDataUrlSchema).max(12, "Too many jerseys.").optional(),
+    attendanceAlertEnabled: z.boolean().optional(),
+    attendanceAlertPercent: attendancePercentSchema.nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.attendanceAlertEnabled && value.attendanceAlertPercent == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Attendance percentage is required.",
+        path: ["attendanceAlertPercent"],
+      });
+    }
   })
   .refine((value) => Object.keys(value).length > 0, "Nothing to update.");
 
@@ -295,7 +301,7 @@ export const announcementReadSchema = z.object({
 });
 
 export const notificationKinds = ["attendance", "event", "other"] as const;
-export const notificationVariants = ["default", "success", "danger"] as const;
+export const notificationVariants = ["default", "success", "danger", "warning"] as const;
 /** The notification centre lists toasts from this many days back. */
 export const notificationWindowDays = 3;
 
@@ -353,12 +359,36 @@ export const transactionWriteSchema = z.object({
   notes: z.string().trim().max(2000, "Notes are too long.").optional().default(""),
 });
 
+export const adminUserPatchSchema = z.object({
+  membershipId: z.string().min(1).nullable().optional(),
+  name: z.string().trim().min(1, "Name is required.").max(80, "Name is too long."),
+  email: emailSchema,
+  role: z.enum(adminRoles),
+  clubId: z.string().min(1, "Club is required."),
+});
+
+export const adminClubPatchSchema = z.object({
+  name: z.string().trim().min(1, "Club name is required.").max(120, "Club name is too long."),
+});
+
+export const clubImportSchema = z
+  .object({
+    players: z.array(clubImportPlayerSchema).max(csvImportRowLimit, "Too many players.").optional(),
+    transactions: z.array(transactionWriteSchema).max(csvImportRowLimit, "Too many transactions.").optional(),
+    events: z.array(eventWriteSchema).max(csvImportRowLimit, "Too many events.").optional(),
+  })
+  .refine(
+    (value) => (value.players?.length ?? 0) + (value.transactions?.length ?? 0) + (value.events?.length ?? 0) > 0,
+    "Nothing to import.",
+  );
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ClubWrite = z.infer<typeof clubWriteSchema>;
 export type PlayerWrite = z.infer<typeof playerWriteSchema>;
 export type EventWrite = z.infer<typeof eventWriteSchema>;
 export type TransactionWrite = z.infer<typeof transactionWriteSchema>;
+export type ClubImport = z.infer<typeof clubImportSchema>;
 export type PlayerStatus = (typeof playerStatuses)[number];
 export type EventType = (typeof eventTypes)[number];
 export type MatchResult = (typeof matchResults)[number];
@@ -374,6 +404,8 @@ export interface Club {
   goals: string;
   logoUrl: string;
   jerseys: string[];
+  attendanceAlertEnabled: boolean;
+  attendanceAlertPercent: number | null;
 }
 
 export interface Membership {
@@ -382,11 +414,129 @@ export interface Membership {
   club: { id: string; name: string; logoUrl: string };
 }
 
+export interface ClubSummary {
+  id: string;
+  name: string;
+  logoUrl: string;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  avatarUrl: string;
+  contact: string;
+  isAdmin: boolean;
+  clubs: ClubSummary[];
   memberships: Membership[];
+}
+
+export interface AdminUserRow {
+  id: string;
+  userId: string;
+  membershipId: string | null;
+  name: string;
+  role: string;
+  email: string;
+  clubId: string;
+  clubName: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface AdminClubRow {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+/** Visible membership role. The admin role is shown as Super Admin. */
+export function roleLabel(role: string) {
+  const trimmed = role.trim();
+  if (!trimmed) return "";
+  if (trimmed === "admin") return "Super Admin";
+  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
+}
+
+/** Manager pages and manager-only API actions. Super Admin is included. */
+export function managesClub(role: string | null | undefined) {
+  return role === "manager" || role === "admin";
+}
+
+/** Clubs the signed-in person can open. Super Admin can open every club. */
+export function accessibleClubIds(user: AuthUser) {
+  if (user.isAdmin && user.clubs.length > 0) return user.clubs.map((club) => club.id);
+  return user.memberships.map((membership) => membership.clubId);
+}
+
+/** Keep a saved club when it is still accessible. Super Admin starts on the Administrator club. */
+export function pickClubId(user: AuthUser, preferred?: string | null) {
+  const ids = accessibleClubIds(user);
+  if (preferred && ids.includes(preferred)) return preferred;
+  if (user.isAdmin) {
+    const home = user.memberships.find((membership) => membership.role === "admin")?.clubId;
+    if (home && ids.includes(home)) return home;
+  }
+  return ids[0] ?? null;
+}
+
+/**
+ * Role used for the open club. Super Admin stays a super admin in every club,
+ * including clubs where they have no membership.
+ */
+export function roleForClub(user: AuthUser, clubId: string | null) {
+  if (!clubId) return null;
+  if (user.isAdmin) return "admin";
+  return user.memberships.find((membership) => membership.clubId === clubId)?.role ?? null;
+}
+
+/** Two-letter avatar fallback. One word uses its first two letters; more words use the first and last initials. */
+export function userInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  const first = parts[0] ?? "";
+  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+  const last = parts[parts.length - 1] ?? "";
+  return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+}
+
+/** Same rate as a player's profile: Yes and Maybe replies over every club event. */
+export function attendancePercentage(attended: number, total: number) {
+  if (total <= 0) return 0;
+  return Math.round((attended / total) * 1000) / 10;
+}
+
+/** Warn only when the club has events and the player's rate is under the saved percentage. */
+export function shouldWarnAttendance(rate: number, threshold: number, totalEvents: number) {
+  return totalEvents > 0 && rate < threshold;
+}
+
+export function attendanceAlertMessage(rate: number, threshold: number) {
+  return `Your attendance is ${rate}%, which is below the ${threshold}% set by your club.`;
+}
+
+export type PasswordChangeFields = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+/** Empty fields are valid. Once any field has a value, the rest are required and the new passwords must match. */
+export function passwordChangeFieldErrors(input: PasswordChangeFields): Partial<PasswordChangeFields> {
+  const filled = [input.currentPassword, input.newPassword, input.confirmPassword].some((value) => value.length > 0);
+  if (!filled) return {};
+  const errors: Partial<PasswordChangeFields> = {};
+  if (!input.currentPassword) errors.currentPassword = "Current password is required.";
+  if (!input.newPassword) errors.newPassword = "New password is required.";
+  else {
+    const parsed = passwordSchema.safeParse(input.newPassword);
+    if (!parsed.success) errors.newPassword = parsed.error.issues[0]?.message ?? "Password is required.";
+  }
+  if (!input.confirmPassword) errors.confirmPassword = "Confirm password is required.";
+  else if (input.newPassword && input.newPassword !== input.confirmPassword) {
+    errors.confirmPassword = "New and confirm passwords must match.";
+  }
+  return errors;
 }
 
 export interface Player {

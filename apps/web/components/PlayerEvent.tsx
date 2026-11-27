@@ -57,11 +57,6 @@ export function PlayerEvent({
         ) : null}
         <div className="event-card-row">
           <div className="row">
-            {pendingReply ? (
-              <Chip color="warning" size="sm" variant="soft">
-                Pending Reply
-              </Chip>
-            ) : null}
             {unanswered && !pendingReply ? <span>Absent</span> : null}
             <Dropdown>
               <Button aria-label={selected} variant="secondary" isDisabled={pending}>

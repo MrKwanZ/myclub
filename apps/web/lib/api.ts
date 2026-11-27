@@ -1,9 +1,12 @@
 import type {
   Announcement,
   AttendanceRow,
+  AdminClubRow,
+  AdminUserRow,
   AuthUser,
   Club,
   ClubEvent,
+  ClubImport,
   ClubWrite,
   Dashboard,
   EventWrite,
@@ -59,13 +62,55 @@ export const api = {
   me(token: string) {
     return request<{ user: AuthUser }>("/auth/me", { token });
   },
+  updateProfile(token: string, body: { name: string; contact: string; avatarUrl?: string }) {
+    return request<{ user: AuthUser }>("/auth/me", { method: "PATCH", token, body });
+  },
+  changePassword(token: string, body: { currentPassword: string; newPassword: string }) {
+    return request<{ ok: true }>("/auth/password", { method: "POST", token, body });
+  },
+  async uploadAvatar(token: string, file: File, options?: { commit?: boolean }) {
+    let response: Response;
+    const body = new FormData();
+    body.append("file", file);
+    const commit = options?.commit === false ? "?commit=0" : "";
+    try {
+      response = await fetch(`${base}/auth/avatar${commit}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      });
+    } catch {
+      throw new ApiError(0, "Can't reach the server. Start the API and try again.");
+    }
+    const data = (await response.json().catch(() => ({}))) as { error?: string; avatarUrl?: string; user?: AuthUser };
+    if (!response.ok) throw new ApiError(response.status, data.error ?? "Could not upload the photo.");
+    return data as { avatarUrl?: string; user?: AuthUser };
+  },
+  attendanceAlerts(token: string) {
+    return request<{ alerts: { clubId: string; message: string }[] }>("/me/attendance-alerts", { token });
+  },
   createClub(token: string, body: ClubWrite) {
     return request<{ club: Club; user: AuthUser }>("/clubs", { method: "POST", token, body });
+  },
+  importClubData(token: string, clubId: string, body: ClubImport) {
+    return request<{ imported: { players: number; transactions: number; events: number } }>(
+      `/clubs/${clubId}/import`,
+      { method: "POST", token, body },
+    );
   },
   club(token: string, clubId: string) {
     return request<{ club: Club }>(`/clubs/${clubId}`, { token });
   },
-  updateClub(token: string, clubId: string, body: Partial<ClubWrite> & { logoUrl?: string; jerseys?: string[] }) {
+  updateClub(
+    token: string,
+    clubId: string,
+    body: Partial<ClubWrite> & {
+      logoUrl?: string;
+      jerseys?: string[];
+      attendanceAlertEnabled?: boolean;
+      attendanceAlertPercent?: number | null;
+    },
+  ) {
     return request<{ club: Club }>(`/clubs/${clubId}`, { method: "PATCH", token, body });
   },
   async uploadLogo(token: string, clubId: string, file: File, options?: { commit?: boolean }) {
@@ -218,5 +263,27 @@ export const api = {
       method: "DELETE",
       token,
     });
+  },
+  adminUsers(token: string) {
+    return request<{ users: AdminUserRow[] }>("/admin/users", { token });
+  },
+  updateAdminUser(
+    token: string,
+    userId: string,
+    body: { membershipId?: string | null; name: string; email: string; role: string; clubId: string },
+  ) {
+    return request<{ users: AdminUserRow[] }>(`/admin/users/${userId}`, { method: "PATCH", token, body });
+  },
+  deleteAdminUser(token: string, userId: string) {
+    return request<{ ok: true }>(`/admin/users/${userId}`, { method: "DELETE", token });
+  },
+  adminClubs(token: string) {
+    return request<{ clubs: AdminClubRow[] }>("/admin/clubs", { token });
+  },
+  updateAdminClub(token: string, clubId: string, body: { name: string }) {
+    return request<{ clubs: AdminClubRow[] }>(`/admin/clubs/${clubId}`, { method: "PATCH", token, body });
+  },
+  deleteAdminClub(token: string, clubId: string) {
+    return request<{ ok: true }>(`/admin/clubs/${clubId}`, { method: "DELETE", token });
   },
 };

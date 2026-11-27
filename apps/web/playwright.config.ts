@@ -50,7 +50,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "npm run start -w @myclub/api",
+      command:
+        "npx prisma migrate deploy --schema apps/api/prisma/schema.prisma && npm run start -w @myclub/api",
       cwd: "../..",
       url: `${TEST_API_URL}/health`,
       reuseExistingServer: false,
